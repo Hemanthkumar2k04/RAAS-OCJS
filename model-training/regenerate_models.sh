@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PY="${1:-./.venv/bin/python}"
-OUT="../server/src/generated"
+export OUT="../server/src/generated"
 mkdir -p "$OUT"
 
 # Base score: XGBoost 3.x stores base_score=None but the true offset is 0.5.

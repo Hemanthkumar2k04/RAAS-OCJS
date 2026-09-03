@@ -8,6 +8,7 @@ use axum::{Json, Router, routing::post};
 use models::{CaseResult, JudgeResult, Submission, TestCase};
 use policy::TierPolicy;
 use queue::{start, submit};
+use tokio::process::Command;
 
 async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) -> JudgeResult {
     let tier = policy.initial_tier(&submission);
@@ -15,18 +16,20 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
     let start = std::time::Instant::now();
     let cases = match docker::run_submission(&submission, &tier).await {
         Ok(c) => c,
-        Err(_) => return JudgeResult {
-            submission_id: submission.id.clone(),
-            approach: policy.name().to_string(),
-            verdict: "SE".to_string(),
-            cpu_time_ms: 0,
-            peak_memory_bytes: 0,
-            wall_time_ms: 0,
-            tier_started,
-            tier_promoted: false,
-            promotion_time_ms: 0,
-            cases: vec![],
-        },
+        Err(_) => {
+            return JudgeResult {
+                submission_id: submission.id.clone(),
+                approach: policy.name().to_string(),
+                verdict: "SE".to_string(),
+                cpu_time_ms: 0,
+                peak_memory_bytes: 0,
+                wall_time_ms: 0,
+                tier_started,
+                tier_promoted: false,
+                promotion_time_ms: 0,
+                cases: vec![],
+            };
+        }
     };
     let wall_ms = start.elapsed().as_millis() as u64;
     let cpu_ms = cases.iter().map(|c| c.cpu_time_ms).sum();
@@ -51,11 +54,20 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), std::io::Error> {
+    let info = tokio::process::Command::new("docker")
+        .arg("info")
+        .output()
+        .await;
+    match info {
+        Ok(o) if o.status.success() => {}
+        _ => return Err(std::io::Error::other("Docker is not running")),
+    }
     let app = Router::new()
         .route("/submit", post(submit))
         .with_state(start());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Judge is online and listening on :3000");
     axum::serve(listener, app).await.unwrap();
+    Ok(())
 }

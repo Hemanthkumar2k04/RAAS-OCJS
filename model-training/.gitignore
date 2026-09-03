@@ -8,6 +8,7 @@ __pycache__/
 # Raw datasets and sampled files (~112 MB)
 codenet_subset/
 codecontests_subset/
+model_comparison,*
 features_*
 *.tar.gz
 *.zip

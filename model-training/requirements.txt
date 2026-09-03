@@ -10,3 +10,4 @@ pyarrow>=17.0.0
 datasets>=3.0.0
 huggingface-hub>=0.24.0
 zstandard>=0.23.0
+m2cgen>=0.10.0
