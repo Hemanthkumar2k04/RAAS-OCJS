@@ -8,7 +8,7 @@ use axum::{Json, Router, routing::post};
 use models::{CaseResult, JudgeResult, Submission, TestCase};
 use policy::TierPolicy;
 use queue::{start, submit};
-use tokio::process::Command;
+use tower_http::cors::{Any, CorsLayer};
 
 async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) -> JudgeResult {
     let tier = policy.initial_tier(&submission);
@@ -16,7 +16,8 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
     let start = std::time::Instant::now();
     let cases = match docker::run_submission(&submission, &tier).await {
         Ok(c) => c,
-        Err(_) => {
+        Err(e) => {
+            println!("{}", e.to_string());
             return JudgeResult {
                 submission_id: submission.id.clone(),
                 approach: policy.name().to_string(),
@@ -63,8 +64,13 @@ async fn main() -> Result<(), std::io::Error> {
         Ok(o) if o.status.success() => {}
         _ => return Err(std::io::Error::other("Docker is not running")),
     }
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_headers(Any)
+        .allow_methods(Any);
     let app = Router::new()
         .route("/submit", post(submit))
+        .layer(cors)
         .with_state(start());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Judge is online and listening on :3000");
