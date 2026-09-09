@@ -163,9 +163,64 @@ curl -X POST localhost:3000/submit -H 'content-type: application/json' -d '{
 |---|---|
 | `verdict` | `AC` (ok), `WA` (wrong answer), `TLE`, `MLE`, `RE`, `CE`, `SE` (server exec error) |
 | `tier_started` | `low` / `high` — the tier the submission began in |
-| `tier_promoted` | `true` if the reactive path migrated it mid-run |
-| `peak_memory_bytes` | max memory read from cgroup (currently `0` until cgroup wiring lands) |
+| `tier_promoted` | `true` if the reactive path lifted the container's limits mid-run |
+| `promotion_time_ms` | wall-clock ms from submission start until the promotion write |
+| `peak_memory_bytes` | max `memory.current` sampled during execution (per-case + overall) |
 | `cpu_time_ms` | sum of per-case CPU time |
+
+> `peak_memory_bytes` / `tier_promoted` / `promotion_time_ms` are real values from
+> the host-side cgroup monitor (see [Reactive monitoring](#6-reactive-monitoring)).
+
+---
+
+## 6. Reactive monitoring
+
+The judge keeps **one Docker container per submission** (`--network=none`, own
+rootfs/namespaces) for isolation — exactly how a real OJ behaves — but reaches
+into that container's **cgroup v2 directory directly from the host** with plain
+file I/O (sub-millisecond, no Docker daemon round-trip, `docker update` is never
+used). The mechanism, per submission:
+
+```
+docker run --cpus=1 --memory=256m --network=none <runtime-image>   # Low tier start
+locate cgroup dir ONCE  /proc/<pid>/cgroup -> /sys/fs/cgroup/system.slice/docker-<id>.scope
+write memory.high 134217728      # arm the 128 MiB soft watermark (Docker does NOT set it)
+for each test case (docker exec):
+  poll memory.events + memory.current every ~2 ms
+  if the 'high' counter grew since the last poll  -> policy.should_promote()?
+  yes -> write memory.high=max, memory.max=max   # unlimited == Baseline/Predictive 'High'
+         record tier_promoted=true, promotion_time_ms
+  track max memory.current sampled  -> CaseResult.peak_memory_bytes
+docker rm -f
+```
+
+- **Reactive** starts Low and promotes on pressure; **Hybrid** starts at the
+  Predictive tier and corrects live. `Baseline`/`Predictive` never promote (their
+  policies return `should_promote() == false`).
+- **Promotion ceiling:** Reactive/Hybrid are lifted to `max` (unlimited), the same
+  ceiling a `Tier::High` start already gives Baseline/Predictive, so a promoted
+  correct program is never capped below the baseline.
+- **Memory-only scope:** the trigger and the promotion touch memory only. CPU is
+  left at 1 vCPU. A purely CPU-bound program that never crosses the memory
+  watermark will **not** be promoted — CPU-based promotion (`cpu.stat` /
+  `cpu.max`) is a later follow-up. State this explicitly when making paper claims.
+
+### Tuning knobs & honest caveats
+
+- `LOW_MEM_HIGH_WATERMARK` (currently 128 MiB) in `src/docker.rs` — the soft line
+  below Docker's 256 MiB `memory.max`. Lower → reacts earlier; must stay under the
+  hard limit so pressure events fire before any OOM-kill.
+- `MONITOR_POLL` (currently 2 ms) in `src/docker.rs`. `memory.events` counters are
+  monotonic, so a crossed spike is never lost between polls; this interval bounds
+  reaction latency.
+- **Permissions:** the judge must be able to read/write `/sys/fs/cgroup` on the
+  host (root, or a user with the delegated scope) — i.e. **native Linux Docker**,
+  not Docker running inside a VM. If the cgroup dir can't be reached the judge logs
+  a warning and degrades gracefully (no promotion, `peak_memory_bytes` stays 0).
+- **Per-case peak is a sampled approximation:** cgroup `memory.peak` was not
+  resettable in our test environment, so each case's peak is the max
+  `memory.current` seen by the ~2 ms poll rather than a kernel-tracked high-water
+  mark. Fast sub-poll spikes can be slightly under-counted.
 
 ---
 
@@ -179,8 +234,9 @@ server/
     ├── main.rs          # axum router + judge fn
     ├── models.rs        # Submission / TestCase / CaseResult / JudgeResult
     ├── queue.rs         # mpsc queue + dispatcher (semaphore-capped tokio.spawn)
-    ├── policy.rs        # TierPolicy trait + 4 strategies
+    ├── policy.rs        # TierPolicy trait + 4 strategies (MonitorSignal, can_promote)
     ├── predict.rs       # features -> XGBoost -> Tier (predictive policy)
-    ├── docker.rs        # per-submission Docker container lifecycle
+    ├── moderator.rs     # host-side cgroup v2 core: CGroup reads/writes + locate
+    ├── docker.rs        # per-submission Docker lifecycle + reactive monitor loop
     └── generated/       # XGBoost compiled to Rust by m2cgen (do not edit)
 ```

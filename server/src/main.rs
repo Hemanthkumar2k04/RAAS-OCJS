@@ -1,11 +1,12 @@
 mod docker;
 mod models;
+mod moderator;
 mod policy;
 mod predict;
 mod queue;
 
-use axum::{Json, Router, routing::post};
-use models::{CaseResult, JudgeResult, Submission, TestCase};
+use axum::{Router, routing::post};
+use models::{JudgeResult, Submission};
 use policy::TierPolicy;
 use queue::{start, submit};
 use tower_http::cors::{Any, CorsLayer};
@@ -14,8 +15,8 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
     let tier = policy.initial_tier(&submission);
     let tier_started = tier.name().to_string();
     let start = std::time::Instant::now();
-    let cases = match docker::run_submission(&submission, &tier).await {
-        Ok(c) => c,
+    let outcome = match docker::run_submission(&submission, &tier, policy, start).await {
+        Ok(o) => o,
         Err(e) => {
             println!("{}", e.to_string());
             return JudgeResult {
@@ -33,9 +34,15 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
         }
     };
     let wall_ms = start.elapsed().as_millis() as u64;
-    let cpu_ms = cases.iter().map(|c| c.cpu_time_ms).sum();
-    let mem = cases.iter().map(|c| c.peak_memory_bytes).max().unwrap_or(0);
-    let verdict = cases
+    let cpu_ms = outcome.results.iter().map(|c| c.cpu_time_ms).sum();
+    let mem = outcome
+        .results
+        .iter()
+        .map(|c| c.peak_memory_bytes)
+        .max()
+        .unwrap_or(0);
+    let verdict = outcome
+        .results
         .iter()
         .find(|c| c.verdict != "AC")
         .map(|c| c.verdict.as_str())
@@ -48,9 +55,9 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
         peak_memory_bytes: mem,
         wall_time_ms: wall_ms,
         tier_started,
-        tier_promoted: false,
-        promotion_time_ms: 0,
-        cases: cases,
+        tier_promoted: outcome.tier_promoted,
+        promotion_time_ms: outcome.promotion_time_ms,
+        cases: outcome.results,
     }
 }
 
