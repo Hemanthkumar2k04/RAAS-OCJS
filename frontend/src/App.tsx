@@ -3,6 +3,7 @@ import ThemeProvider from './components/ThemeProvider'
 import ThemeToggle from './components/ThemeToggle'
 import CodeEditor from './components/CodeEditor'
 import StatusChip from './components/StatusChip'
+import StrategyBarChart from './components/StrategyBarChart'
 import { Panel, MetricStat } from './components/ui'
 import { tierTone, verdictTone } from './status'
 
@@ -243,6 +244,9 @@ function JudgePage() {
 
   const hasResult = singleResult !== null || allResults !== null
   const runDisabled = running || status === 'offline'
+  const chartData = allResults
+    ? allResults.map((r) => ({ strategy: r.approach, tier: r.tier_started, value: r[metric] }))
+    : null
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -456,6 +460,20 @@ function JudgePage() {
 
                   {allResults && (
                     <Panel className="p-5">
+                      {chartData && (
+                        <div className="mb-6">
+                          <StrategyBarChart
+                            key={runSeq}
+                            data={chartData}
+                            metricLabel={METRIC_LABELS[metric]}
+                            formatValue={(v) =>
+                              metric === 'peak_memory_bytes' ? formatBytes(v) : `${v} ms`
+                            }
+                            tierLabelFn={tierLabel}
+                          />
+                        </div>
+                      )}
+
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <h3 className="text-xs font-medium text-ink-muted">Strategy comparison</h3>
                         <div className="inline-flex rounded border border-line bg-canvas p-0.5">
