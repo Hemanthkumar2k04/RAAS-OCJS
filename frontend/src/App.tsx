@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import Editor from '@monaco-editor/react'
+import { useEffect, useState } from 'react'
+import ThemeProvider from './components/ThemeProvider'
+import ThemeToggle from './components/ThemeToggle'
+import CodeEditor from './components/CodeEditor'
+import StatusChip from './components/StatusChip'
+import { Panel, MetricStat } from './components/ui'
+import { tierTone, verdictTone } from './status'
 
 const BACKEND_URL = 'http://localhost:3000'
 
@@ -100,21 +105,12 @@ interface JudgeResult {
 
 type ComparisonMetric = 'cpu_time_ms' | 'wall_time_ms' | 'peak_memory_bytes'
 
-const METRIC_LABELS: Record<ComparisonMetric, string> = {
-  cpu_time_ms: 'CPU Time (ms)',
-  wall_time_ms: 'Wall Time (ms)',
-  peak_memory_bytes: 'Peak Memory',
-}
+const METRICS: ComparisonMetric[] = ['cpu_time_ms', 'wall_time_ms', 'peak_memory_bytes']
 
-function verdictClass(verdict: string): string {
-  switch (verdict) {
-    case 'AC':
-      return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-    case 'WA':
-      return 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-    default:
-      return 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-  }
+const METRIC_LABELS: Record<ComparisonMetric, string> = {
+  cpu_time_ms: 'CPU time',
+  wall_time_ms: 'Wall time',
+  peak_memory_bytes: 'Peak memory',
 }
 
 function tierLabel(tier: string): string {
@@ -133,73 +129,45 @@ function formatMetric(metric: ComparisonMetric, result: JudgeResult): string {
   return `${result[metric]} ms`
 }
 
-function CodeEditor({
-  language,
-  value,
-  onChange,
-}: {
-  language: CodeLanguage
-  value: string
-  onChange: (v: string) => void
-}) {
-  const [usingTextarea, setUsingTextarea] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+type BackendStatus = 'checking' | 'online' | 'offline'
 
-  useEffect(() => {
-    // If Monaco hasn't mounted (e.g. CDN unreachable), fall back to a textarea.
-    timer.current = setTimeout(() => setUsingTextarea(true), 6000)
-    return () => {
-      if (timer.current) clearTimeout(timer.current)
-    }
-  }, [])
-
-  const fallback = (
-    <textarea
-      className="h-full w-full resize-none bg-slate-900 p-4 font-mono text-sm leading-relaxed text-slate-200 outline-none"
-      spellCheck={false}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  )
-
-  if (usingTextarea) return fallback
-
-  return (
-    <div className="h-full">
-      <Editor
-        height="100%"
-        language={monacoLanguage(language)}
-        theme="vs-dark"
-        value={value}
-        onChange={(v) => onChange(v ?? '')}
-        loading={fallback}
-        onMount={() => {
-          if (timer.current) clearTimeout(timer.current)
-        }}
-        options={{
-          fontSize: 14,
-          fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace",
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 4,
-          padding: { top: 12, bottom: 12 },
-        }}
-      />
-    </div>
-  )
+const STATUS_DOT: Record<BackendStatus, string> = {
+  online: 'bg-success',
+  offline: 'bg-danger',
+  checking: 'bg-warning',
 }
 
-function MetricSection({ label, value }: { label: string; value: string }) {
+const STATUS_LABEL: Record<BackendStatus, string> = {
+  online: 'Online',
+  offline: 'Offline',
+  checking: 'Checking',
+}
+
+function BackendIndicator({ status }: { status: BackendStatus }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-bold text-slate-100">{value}</div>
+    <div
+      className="inline-flex items-center gap-2 border border-line bg-canvas px-3 py-1.5 text-sm"
+      role="status"
+      title={`Judge backend ${BACKEND_URL}`}
+    >
+      <span
+        className={`h-2 w-2 ${STATUS_DOT[status]} ${status === 'checking' ? 'animate-pulse' : ''}`}
+        aria-hidden="true"
+      />
+      <span className="font-medium text-ink-muted">Backend: {STATUS_LABEL[status]}</span>
     </div>
   )
 }
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <JudgePage />
+    </ThemeProvider>
+  )
+}
+
+function JudgePage() {
   const [language, setLanguage] = useState<CodeLanguage>('Python')
   const [strategy, setStrategy] = useState<Strategy>('Predictive')
   const [source, setSource] = useState(STARTER_CODE.Python)
@@ -208,7 +176,8 @@ export default function App() {
   const [singleResult, setSingleResult] = useState<JudgeResult | null>(null)
   const [allResults, setAllResults] = useState<JudgeResult[] | null>(null)
   const [metric, setMetric] = useState<ComparisonMetric>('cpu_time_ms')
-  const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [status, setStatus] = useState<BackendStatus>('checking')
+  const [runSeq, setRunSeq] = useState(0)
 
   useEffect(() => {
     const check = async () => {
@@ -262,6 +231,7 @@ export default function App() {
         setSingleResult(await submitOne(approach))
         setAllResults(null)
       }
+      setRunSeq((n) => n + 1)
     } catch {
       setError('Unable to connect to judge backend (http://localhost:3000)')
       setSingleResult(null)
@@ -271,231 +241,293 @@ export default function App() {
     }
   }
 
-  const statusDot =
-    status === 'online' ? 'bg-emerald-500' : status === 'offline' ? 'bg-rose-500' : 'bg-amber-500'
-  const statusText = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking…'
+  const hasResult = singleResult !== null || allResults !== null
+  const runDisabled = running || status === 'offline'
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">RAAS-OJS</h1>
-            <p className="hidden text-xs text-slate-400 sm:block">
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="sticky top-0 z-10 border-b border-line bg-surface">
+        <div className="mx-auto flex w-full max-w-[1720px] items-center justify-between gap-4 px-6 py-3 lg:px-8">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h1 className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-ink">
+              RAAS-OJS
+            </h1>
+            <p className="hidden truncate text-xs text-ink-muted md:block">
               Resource-Aware Adaptive Scheduling for Online Judge Systems
             </p>
           </div>
-          <div
-            className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm"
-            title={`Judge backend ${BACKEND_URL}`}
-          >
-            <span className={`h-2.5 w-2.5 rounded-full ${statusDot} ${status === 'checking' ? 'animate-pulse' : ''}`} />
-            <span className="font-medium text-slate-300">Backend: {statusText}</span>
+          <div className="flex shrink-0 items-center gap-3">
+            <BackendIndicator status={status} />
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <section className="flex flex-col gap-6">
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-            <div className="flex items-center justify-between">
-              <span className="rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10">
-                Easy
-              </span>
-              <span className="text-xs text-slate-500">Demo Only</span>
-            </div>
-            <h2 className="mt-3 text-xl font-bold text-white">1. Add Two Numbers</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Read two integers separated by space from standard input and print their sum.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Test Cases</h3>
-            <div className="mt-3 flex flex-col gap-3">
-              {TEST_CASES.map((tc, i) => (
-                <div key={i} className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-slate-950 border border-slate-800 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Input</div>
-                    <pre className="mt-1 font-mono text-sm text-slate-200">{tc.input.trim() || '(empty)'}</pre>
-                  </div>
-                  <div className="rounded-lg bg-slate-950 border border-slate-800 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Expected</div>
-                    <pre className="mt-1 font-mono text-sm text-emerald-300">{tc.expected.trim()}</pre>
-                  </div>
+      <main className="bg-canvas">
+        <div className="mx-auto w-full max-w-[1720px] px-6 py-6 lg:px-8">
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+            {/* ------------------------------------------------ left column */}
+            <section className="flex flex-col gap-6">
+              <Panel className="p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <StatusChip mono={false} tone="muted">
+                    Easy
+                  </StatusChip>
+                  <span className="text-xs text-ink-muted">Demo only</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
+                <h2 className="mt-4 text-lg font-semibold leading-tight text-ink">
+                  1. Add Two Numbers
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+                  Read two integers separated by space from standard input and print their sum.
+                </p>
+              </Panel>
 
-        <section className="flex flex-col gap-6">
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-            <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 px-4 py-3">
-              <label className="flex flex-col gap-1 text-xs font-medium text-slate-400">
-                Language
-                <select
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-blue-500"
-                  value={language}
-                  onChange={(e) => {
-                    const lang = e.target.value as CodeLanguage
-                    setLanguage(lang)
-                    setSource(STARTER_CODE[lang])
-                    setSingleResult(null)
-                    setAllResults(null)
-                  }}
-                >
-                  {LANGS.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
+              <Panel className="flex flex-col gap-4 p-5">
+                <h3 className="text-xs font-medium text-ink-muted">Test cases</h3>
+                <div className="flex flex-col gap-3">
+                  {TEST_CASES.map((tc, i) => (
+                    <div key={i} className="grid grid-cols-2 gap-px border border-line bg-line">
+                      <div className="min-w-0 bg-canvas p-3">
+                        <div className="text-[11px] text-ink-muted">Input</div>
+                        <pre className="mt-1.5 whitespace-pre-wrap font-mono text-sm text-ink">
+                          {tc.input.trim() || '(empty)'}
+                        </pre>
+                      </div>
+                      <div className="min-w-0 bg-canvas p-3">
+                        <div className="text-[11px] text-ink-muted">Expected</div>
+                        <pre className="mt-1.5 whitespace-pre-wrap font-mono text-sm text-ink">
+                          {tc.expected.trim()}
+                        </pre>
+                      </div>
+                    </div>
                   ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-medium text-slate-400">
-                Strategy
-                <select
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-blue-500"
-                  value={strategy}
-                  onChange={(e) => {
-                    setStrategy(e.target.value as Strategy)
-                    setSingleResult(null)
-                    setAllResults(null)
-                  }}
-                >
-                  {STRATEGIES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="ml-auto">
-                <button
-                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={handleRun}
-                  disabled={running || status === 'offline'}
-                >
-                  {running ? 'Running…' : 'Run Code'}
-                </button>
-              </div>
-            </div>
-            <div className="h-[340px] border-b border-slate-800">
-              <CodeEditor language={language} value={source} onChange={setSource} />
-            </div>
-          </div>
+                </div>
+              </Panel>
+            </section>
 
-          {error && (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
-              <div className="flex items-center gap-2 font-semibold text-rose-400">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                {error}
-              </div>
-              <p className="mt-1 text-sm text-rose-300/80">
-                Make sure the judge is running ({BACKEND_URL}) and the Docker runtime images are built.
-              </p>
-            </div>
-          )}
-
-          {singleResult && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Result</h3>
-                <span
-                  className={`rounded-md border px-2.5 py-1 text-sm font-bold ${verdictClass(singleResult.verdict)}`}
-                >
-                  {singleResult.verdict}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <MetricSection label="CPU Time" value={`${singleResult.cpu_time_ms} ms`} />
-                <MetricSection label="Wall Time" value={`${singleResult.wall_time_ms} ms`} />
-                <MetricSection label="Peak Memory" value={formatBytes(singleResult.peak_memory_bytes)} />
-                <MetricSection label="Starting Tier" value={tierLabel(singleResult.tier_started)} />
-                <MetricSection
-                  label="Tier Promoted"
-                  value={singleResult.tier_promoted ? 'Yes' : 'No'}
-                  />
-                <MetricSection label="Promotion Time" value={`${singleResult.promotion_time_ms} ms`} />
-              </div>
-              <h4 className="mt-6 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Cases ({singleResult.cases.length})
-              </h4>
-              <div className="mt-2 flex flex-col gap-2">
-                {singleResult.cases.map((c, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm"
-                  >
-                    <span className="text-slate-400">Case {i + 1}</span>
-                    <span className={`rounded-md border px-2 py-0.5 font-bold ${verdictClass(c.verdict)}`}>
-                      {c.verdict}
-                    </span>
-                    <span className="font-mono text-slate-400">{c.cpu_time_ms} ms</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {allResults && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-                  All Four Strategies
-                </h3>
-                <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-1">
-                  {(['cpu_time_ms', 'wall_time_ms', 'peak_memory_bytes'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setMetric(m)}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                        metric === m
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+            {/* ----------------------------------------------- right column */}
+            <section className="flex flex-col gap-6">
+              <Panel className="flex flex-col">
+                <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b border-line px-5 py-3.5">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs text-ink-muted">Language</span>
+                    <select
+                      className="h-9 rounded border border-line bg-canvas px-3 text-sm text-ink outline-none transition-colors hover:border-ink-muted focus:border-accent"
+                      value={language}
+                      onChange={(e) => {
+                        const lang = e.target.value as CodeLanguage
+                        setLanguage(lang)
+                        setSource(STARTER_CODE[lang])
+                        setSingleResult(null)
+                        setAllResults(null)
+                      }}
                     >
-                      {METRIC_LABELS[m]}
+                      {LANGS.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs text-ink-muted">Strategy</span>
+                    <select
+                      className="h-9 rounded border border-line bg-canvas px-3 text-sm text-ink outline-none transition-colors hover:border-ink-muted focus:border-accent"
+                      value={strategy}
+                      onChange={(e) => {
+                        setStrategy(e.target.value as Strategy)
+                        setSingleResult(null)
+                        setAllResults(null)
+                      }}
+                    >
+                      {STRATEGIES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="ml-auto">
+                    <button
+                      type="button"
+                      onClick={handleRun}
+                      disabled={runDisabled}
+                      aria-busy={running}
+                      className="inline-flex h-9 items-center justify-center rounded bg-accent px-4 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {running ? 'Running…' : 'Run Code'}
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
-                      <th className="py-2 pr-4 font-semibold">Strategy</th>
-                      <th className="py-2 pr-4 font-semibold">Verdict</th>
-                      <th className="py-2 pr-4 font-semibold">Tier</th>
-                      <th className="py-2 font-semibold">{METRIC_LABELS[metric]}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allResults.map((r) => (
-                      <tr key={r.approach} className="border-b border-slate-800/60 last:border-0">
-                        <td className="py-3 pr-4 font-semibold capitalize text-slate-200">{r.approach}</td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`rounded-md border px-2 py-0.5 text-xs font-bold ${verdictClass(r.verdict)}`}
-                          >
-                            {r.verdict}
+
+                <div className="bg-canvas">
+                  <div className="h-[360px]">
+                    <CodeEditor language={monacoLanguage(language)} value={source} onChange={setSource} />
+                  </div>
+                </div>
+              </Panel>
+
+              {error && (
+                <div
+                  role="alert"
+                  className="flex flex-col gap-1 border border-danger/40 bg-danger/10 px-4 py-3"
+                >
+                  <span className="text-sm font-semibold text-danger">{error}</span>
+                  <p className="text-xs text-ink-muted">
+                    Make sure the judge is running (
+                    <code className="font-mono text-ink-muted">{BACKEND_URL}</code>) and the Docker
+                    runtime images are built.
+                  </p>
+                </div>
+              )}
+
+              {hasResult && (
+                <div key={runSeq} className="reveal flex flex-col gap-6">
+                  {singleResult && (
+                    <Panel className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                        <div>
+                          <h3 className="text-xs font-medium text-ink-muted">Result</h3>
+                          <div className="mt-2 flex items-center gap-3">
+                            <StatusChip tone={verdictTone(singleResult.verdict)} className="px-2 py-1 text-xs">
+                              {singleResult.verdict}
+                            </StatusChip>
+                            <span className="font-mono text-xs text-ink-muted">
+                              {singleResult.submission_id}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="font-mono text-xs text-ink-muted">
+                          {singleResult.approach}
+                        </span>
+                      </div>
+
+                      {/* Hero numbers */}
+                      <div className="mt-5 grid grid-cols-1 gap-px border border-line bg-line sm:grid-cols-3">
+                        <MetricStat label="CPU time" value={`${singleResult.cpu_time_ms} ms`} />
+                        <MetricStat label="Wall time" value={`${singleResult.wall_time_ms} ms`} />
+                        <MetricStat label="Peak memory" value={formatBytes(singleResult.peak_memory_bytes)} />
+                      </div>
+
+                      {/* Scheduling spec */}
+                      <div className="mt-5 flex flex-col divide-y divide-line border-t border-line">
+                        <div className="flex items-center justify-between gap-4 py-2.5">
+                          <span className="text-sm text-ink-muted">Starting tier</span>
+                          <StatusChip tone={tierTone(singleResult.tier_started)} mono={false}>
+                            {tierLabel(singleResult.tier_started)}
+                          </StatusChip>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 py-2.5">
+                          <span className="text-sm text-ink-muted">Tier promoted</span>
+                          <span className="font-mono text-sm text-ink">
+                            {singleResult.tier_promoted ? 'Yes' : 'No'}
                           </span>
-                        </td>
-                        <td className="py-3 pr-4 text-slate-400">{tierLabel(r.tier_started)}</td>
-                        <td className="py-3 font-mono text-slate-200">
-                          {formatMetric(metric, r)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-3 text-xs text-slate-500">
-                Submissions were executed sequentially. Toggle the metric to compare scheduling strategies.
-              </p>
-            </div>
-          )}
-        </section>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 py-2.5">
+                          <span className="text-sm text-ink-muted">Promotion time</span>
+                          <span className="font-mono text-sm text-ink tabular-nums">
+                            {singleResult.promotion_time_ms} ms
+                          </span>
+                        </div>
+                      </div>
+
+                      <h4 className="mt-5 text-xs font-medium text-ink-muted">
+                        Cases ({singleResult.cases.length})
+                      </h4>
+                      <div className="flex flex-col divide-y divide-line border-t border-line">
+                        {singleResult.cases.map((c, i) => (
+                          <div
+                            key={i}
+                            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 py-2.5"
+                          >
+                            <span className="text-sm text-ink-muted">Case {i + 1}</span>
+                            <StatusChip tone={verdictTone(c.verdict)}>{c.verdict}</StatusChip>
+                            <span className="font-mono text-sm text-ink tabular-nums">
+                              {c.cpu_time_ms} ms
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  )}
+
+                  {allResults && (
+                    <Panel className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <h3 className="text-xs font-medium text-ink-muted">Strategy comparison</h3>
+                        <div className="inline-flex rounded border border-line bg-canvas p-0.5">
+                          {METRICS.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setMetric(m)}
+                              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                                metric === m
+                                  ? 'bg-accent text-on-accent'
+                                  : 'text-ink-muted hover:text-ink'
+                              }`}
+                            >
+                              {METRIC_LABELS[m]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="w-full min-w-[560px] text-sm">
+                          <thead>
+                            <tr className="border-b border-line text-left">
+                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                                Strategy
+                              </th>
+                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                                Verdict
+                              </th>
+                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                                Tier
+                              </th>
+                              <th className="py-2 text-right text-xs font-medium text-ink-muted">
+                                {METRIC_LABELS[metric]}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allResults.map((r) => (
+                              <tr key={r.approach} className="border-b border-line last:border-0">
+                                <td className="py-2.5 pr-4 font-medium capitalize text-ink">
+                                  {r.approach}
+                                </td>
+                                <td className="py-2.5 pr-4">
+                                  <StatusChip tone={verdictTone(r.verdict)}>{r.verdict}</StatusChip>
+                                </td>
+                                <td className="py-2.5 pr-4">
+                                  <StatusChip tone={tierTone(r.tier_started)} mono={false}>
+                                    {tierLabel(r.tier_started)}
+                                  </StatusChip>
+                                </td>
+                                <td className="py-2.5 text-right font-mono text-ink tabular-nums">
+                                  {formatMetric(metric, r)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <p className="mt-3 text-xs text-ink-muted">
+                        Submissions were executed sequentially. Switch the metric to compare
+                        scheduling strategies.
+                      </p>
+                    </Panel>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
       </main>
     </div>
   )

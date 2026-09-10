@@ -4,7 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafbfb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1414" media="(prefers-color-scheme: dark)" />
+    <title>RAAS-OJS · Resource-Aware Adaptive Scheduling</title>
+    <script>
+      // Apply the persisted/system theme before first paint to avoid a flash.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('raas-theme')
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {
+          /* localStorage unavailable — fall back to default light */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

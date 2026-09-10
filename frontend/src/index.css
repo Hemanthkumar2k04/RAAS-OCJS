@@ -1,1 +1,133 @@
 @import "tailwindcss";
+
+/* Class-based dark mode: `.dark` is toggled on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/* Semantic color tokens (light / dark). Values per design system.     */
+/* `--canvas` / `--surface` / `--line` / `--ink` / `--ink-muted` flip  */
+/* with the `.dark` class; accent + status colors are fixed (their     */
+/* meaning does not shift between modes, only their context of use).   */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --canvas: #fafbfb;
+  --surface: #ffffff;
+  --line: #e4e8e8;
+  --ink: #1a2323;
+  --ink-muted: #5c6b6b;
+
+  /* Fixed semantic palette (shared across modes) */
+  --accent: #0ea5a5; /* teal — brand/primary actions + active controls ONLY */
+  --success: #3fb56f; /* Accepted / Light tier / backend Online */
+  --danger: #e0574c; /* Wrong Answer / Runtime Error / Offline / errors */
+  --warning: #e0a83f; /* Time Limit Exceeded / backend Checking */
+  --heavy: #8c6fe0; /* Memory Limit Exceeded / Heavy tier */
+  --on-accent: #0b2a2a; /* dark foreground placed on accent surfaces (AA) */
+}
+
+.dark {
+  --canvas: #0f1414;
+  --surface: #161d1d;
+  --line: #283333;
+  --ink: #eaf0f0;
+  --ink-muted: #8fa0a0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tailwind theme mapping so tokens become utilities: bg-canvas,       */
+/* bg-surface, border-line, text-ink, text-ink-muted, bg-accent,       */
+/* text-success, border-danger/30, etc. (`inline` keeps the var() so   */
+/* the .dark override applies at the point of use).                    */
+/* ------------------------------------------------------------------ */
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-heavy: var(--heavy);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                            */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--accent) 26%, transparent);
+    color: var(--ink);
+  }
+
+  /* Thin, quiet scrollbars that match the hairline palette */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border: 3px solid transparent;
+    border-radius: 6px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Single deliberate motion: result reveal after running code.        */
+/* Disabled under prefers-reduced-motion.                             */
+/* ------------------------------------------------------------------ */
+
+@keyframes raas-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  animation: raas-reveal 0.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}
