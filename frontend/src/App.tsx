@@ -4,6 +4,7 @@ import ThemeToggle from './components/ThemeToggle'
 import CodeEditor from './components/CodeEditor'
 import StatusChip from './components/StatusChip'
 import StrategyBarChart from './components/StrategyBarChart'
+import TestCaseChart from './components/TestCaseChart'
 import { Panel, MetricStat } from './components/ui'
 import { tierTone, verdictTone } from './status'
 
@@ -415,6 +416,42 @@ function JudgePage() {
                         <MetricStat label="Wall time" value={`${singleResult.wall_time_ms} ms`} />
                         <MetricStat label="Peak memory" value={formatBytes(singleResult.peak_memory_bytes)} />
                       </div>
+
+                      {/* Per test case chart */}
+                      {singleResult.cases.length > 0 && (
+                        <div className="mt-5">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h4 className="text-xs font-medium text-ink-muted">Per test case</h4>
+                            <div className="inline-flex rounded border border-line bg-canvas p-0.5">
+                              {METRICS.map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setMetric(m)}
+                                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                                    metric === m
+                                      ? 'bg-accent text-on-accent'
+                                      : 'text-ink-muted hover:text-ink'
+                                  }`}
+                                >
+                                  {METRIC_LABELS[m]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <TestCaseChart
+                              key={runSeq}
+                              cases={singleResult.cases}
+                              metric={metric}
+                              metricLabel={METRIC_LABELS[metric]}
+                              formatValue={(v) =>
+                                metric === 'peak_memory_bytes' ? formatBytes(v) : `${v} ms`
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       {/* Scheduling spec */}
                       <div className="mt-5 flex flex-col divide-y divide-line border-t border-line">

@@ -11,37 +11,12 @@ import {
 import { useTheme } from '../theme'
 import { tierTone } from '../status'
 import StatusChip from './StatusChip'
+import { chartTokens } from '../chartTokens'
 
 export interface StrategyDatum {
   strategy: string
   tier: string
   value: number
-}
-
-interface Tokens {
-  accent: string
-  ink: string
-  inkMuted: string
-  line: string
-  surface: string
-}
-
-// Mirror of the design tokens in src/index.css (`:root` vs `.dark`).
-// `--accent` is fixed across modes; the rest flip with the `.dark` class.
-const LIGHT_TOKENS: Tokens = {
-  accent: '#0ea5a5',
-  ink: '#1a2323',
-  inkMuted: '#5c6b6b',
-  line: '#e4e8e8',
-  surface: '#ffffff',
-}
-
-const DARK_TOKENS: Tokens = {
-  accent: '#0ea5a5',
-  ink: '#eaf0f0',
-  inkMuted: '#8fa0a0',
-  line: '#283333',
-  surface: '#161d1d',
 }
 
 interface StrategyBarChartProps {
@@ -81,7 +56,7 @@ export default function StrategyBarChart({
   tierLabelFn,
 }: StrategyBarChartProps) {
   const { theme } = useTheme()
-  const tokens = theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
+  const tokens = chartTokens(theme)
 
   const [reduceMotion] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
