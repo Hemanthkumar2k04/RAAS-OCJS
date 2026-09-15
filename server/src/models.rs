@@ -35,3 +35,8 @@ pub struct CaseResult {
     pub cpu_time_ms: u64,
     pub peak_memory_bytes: u64,
 }
+
+#[derive(Serialize)]
+pub struct HealthCheck {
+    pub status: String,
+}

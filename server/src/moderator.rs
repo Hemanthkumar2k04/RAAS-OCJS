@@ -198,18 +198,24 @@ pub fn locate_cgroup_dir(container: &str) -> io::Result<PathBuf> {
         }
     }
 
-    // 2) Fallback: systemd scope derived from the full container id.
+    // 2) Fallback: derive cgroup path from full container id across common layouts.
     let out = Command::new("docker")
         .args(["inspect", "--format", "{{.Id}}", container])
         .output()?;
     if out.status.success() {
         let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if !id.is_empty() {
-            let dir = PathBuf::from(CGROUP_FS_ROOT)
-                .join("system.slice")
-                .join(format!("docker-{id}.scope"));
-            if dir.join("memory.events").is_file() {
-                return Ok(dir);
+            let root = PathBuf::from(CGROUP_FS_ROOT);
+            let candidates = [
+                root.join("system.slice").join(format!("docker-{id}.scope")),
+                root.join(format!("docker-{id}.scope")),
+                root.join("docker").join(&id),
+                root.join(&id),
+            ];
+            for dir in candidates {
+                if dir.join("memory.current").is_file() || dir.join("memory.events").is_file() {
+                    return Ok(dir);
+                }
             }
         }
     }

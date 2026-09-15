@@ -184,11 +184,8 @@ function JudgePage() {
   useEffect(() => {
     const check = async () => {
       try {
-        await fetch(`${BACKEND_URL}/submit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-          signal: AbortSignal.timeout(4000),
+        await fetch(`${BACKEND_URL}/health`, {
+          method: 'GET',
         })
         setStatus('online')
       } catch {

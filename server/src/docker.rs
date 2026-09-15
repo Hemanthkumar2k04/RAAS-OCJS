@@ -157,6 +157,36 @@ async fn run_case_monitored(
         }
     };
 
+    // If sampling during the loop did not capture a peak (e.g. fast task exit),
+    // sample the current host cgroup, or query the container's internal cgroup file.
+    if case_peak == 0 {
+        if let Some(cg) = cg {
+            if let Ok(cur) = cg.memory_current() {
+                case_peak = cur;
+            }
+        }
+    }
+    if case_peak == 0 {
+        if let Ok(out) = Command::new("docker")
+            .args([
+                "exec",
+                container,
+                "sh",
+                "-c",
+                "cat /sys/fs/cgroup/memory.peak 2>/dev/null || cat /sys/fs/cgroup/memory.current 2>/dev/null",
+            ])
+            .output()
+            .await
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if let Ok(bytes) = s.parse::<u64>() {
+                    case_peak = bytes;
+                }
+            }
+        }
+    }
+
     let wall_ms = case_start.elapsed().as_millis() as u64;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let expected = test.expected.trim().to_string();

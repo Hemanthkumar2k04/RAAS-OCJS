@@ -5,11 +5,21 @@ mod policy;
 mod predict;
 mod queue;
 
-use axum::{Router, routing::post};
-use models::{JudgeResult, Submission};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
+use models::{HealthCheck, JudgeResult, Submission};
 use policy::TierPolicy;
 use queue::{start, submit};
 use tower_http::cors::{Any, CorsLayer};
+
+async fn health_check() -> Json<HealthCheck> {
+    println!("[HEALTH CHECK] Returned Status OK");
+    return Json(HealthCheck {
+        status: String::from("OK"),
+    });
+}
 
 async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) -> JudgeResult {
     let tier = policy.initial_tier(&submission);
@@ -77,6 +87,7 @@ async fn main() -> Result<(), std::io::Error> {
         .allow_methods(Any);
     let app = Router::new()
         .route("/submit", post(submit))
+        .route("/health", get(health_check))
         .layer(cors)
         .with_state(start());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
