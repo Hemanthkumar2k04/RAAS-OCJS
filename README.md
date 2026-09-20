@@ -168,12 +168,15 @@ docker build -t cpp-judge-runtime    server/runtimes/cpp
 docker build -t java-judge-runtime   server/runtimes/java
 ```
 
-### 2. Run Judge Server
+### 2. Run Judge Server (Must run with `sudo` for Live Promotion)
 ```bash
 cd server
 cargo build
+
+# Run with sudo so the server has permissions to write cgroup v2 soft watermarks:
 sudo ./target/debug/server
 ```
+> **Note on Live Promotion**: Running with `sudo` is mandatory for the **Reactive** and **Hybrid** strategies to write to `/sys/fs/cgroup/.../memory.high`. Without `sudo`, the kernel returns `Permission denied (os error 13)` and submissions cannot be promoted mid-execution.
 
 ### 3. Start Frontend UI
 ```bash

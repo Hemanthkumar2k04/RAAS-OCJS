@@ -39,19 +39,41 @@ cd server
 cargo build
 ```
 
-### 3.2 Run the Server with cgroup Permissions
-The reactive monitor writes soft watermarks to `/sys/fs/cgroup/system.slice/docker-.../memory.high` and reads `cpu.stat`. On standard Linux installations, root privileges are required to configure container cgroups:
+### 3.2 Run the Server with Root / Sudo (Required for Live Promotion)
+
+> [!IMPORTANT]
+> **Why `sudo` is mandatory for Reactive & Hybrid Promotion:**
+> During execution of Reactive or Hybrid submissions, the judge dynamically writes the 128 MiB watermark to the container's kernel cgroup file:
+> `/sys/fs/cgroup/system.slice/docker-<id>.scope/memory.high`
+> 
+> Under standard Linux systemd cgroup hierarchies, unprivileged processes cannot write to `/sys/fs/cgroup`.
+> - **Without `sudo`**: The server starts, but logs `[moderator] failed to arm memory.high for oj_...: Permission denied (os error 13)`. The kernel never increments `memory.events` pressure counters, and **reactive promotion will never trigger**.
+> - **With `sudo`**: The server writes `memory.high` cleanly. Heavy jobs (e.g. Problem 2: 0-1 Knapsack DP) trigger live promotion from Light (256 MB) to Uncapped at runtime.
 
 ```bash
+# Build the binary
+cd server
+cargo build
+
+# Execute with root privileges:
 sudo ./target/debug/server
-# Or:
-sudo cargo run
+# Or via cargo:
+sudo -E cargo run
 ```
 
 Expected output:
 ```
 Judge is online and listening on :3000
 ```
+
+#### How to verify live promotion is active:
+Submit Problem 2 (**0-1 Knapsack Large State Space**) using the Reactive strategy:
+1. In the terminal running the server, confirm there are **no** `Permission denied (os error 13)` warnings.
+2. In the server output or UI, observe:
+   - `tier_started: "low"`
+   - `tier_promoted: true`
+   - `promotion_time_ms: ~538`
+   - `allocated_memory_bytes` transitions from `256 MB` to `Uncapped`.
 
 ### 3.3 Verifying Docker Context
 If you have Docker Desktop installed alongside native Docker, ensure the native daemon is used so the host `/sys/fs/cgroup` tree is accessible:

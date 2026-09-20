@@ -71,13 +71,28 @@ cargo build                # bakes the new weights into the binary
 
 ---
 
-## 3. Run the server
+## 3. Run the server (CRITICAL: Requires Root / Sudo for Live Promotion)
+
+> [!IMPORTANT]
+> **Why `sudo` is strictly required for Reactive and Hybrid tier promotion:**
+> The Reactive monitor detects memory spikes by arming a 128 MiB soft watermark (`memory.high`) directly on the container's host cgroup:
+> `/sys/fs/cgroup/system.slice/docker-<id>.scope/memory.high`
+> 
+> On Linux, writing to cgroup controller files owned by systemd requires root privileges.
+> - **If run without `sudo`**: You will see `[moderator] failed to arm memory.high: Permission denied (os error 13)` in the server logs. The kernel will **not** emit pressure events, and **programs will NOT be promoted mid-execution**.
+> - **If run with `sudo`**: The watermark arms successfully, and heavy submissions (such as Problem 2: Knapsack 2D DP) will smoothly trigger live promotion from Light (256 MB) to Uncapped.
+
+Run from the `server/` directory:
 
 ```bash
 cd server
-cargo run
-# or run the built binary directly:
-./target/debug/server
+cargo build
+
+# Run with sudo to grant cgroup v2 write permissions for live promotion:
+sudo ./target/debug/server
+
+# Alternatively, using cargo with preserved environment:
+sudo -E cargo run
 ```
 
 Expected output:
@@ -85,6 +100,11 @@ Expected output:
 ```
 Judge is online and listening on :3000
 ```
+
+> **Docker Context Check**: Ensure native Linux Docker is active so host cgroups are accessible:
+> ```bash
+> docker context use default
+> ```
 
 ---
 

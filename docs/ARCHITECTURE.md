@@ -116,6 +116,7 @@ Submissions run inside dedicated rootless/daemon sandboxes utilizing Linux cgrou
       .await?;
   ```
 - The container transitions from **Light (256 MiB)** to **Heavy (Uncapped)** mid-execution in under 15 ms, without dropping open file descriptors, child PIDs, or execution state.
+- **Host Privileges & Delegation**: Because writing to `/sys/fs/cgroup/system.slice/docker-<id>.scope/memory.high` touches systemd-managed kernel cgroup controllers, the judge server process must be run with root / sudo permissions (`sudo ./target/debug/server`) or systemd slice delegation. Running without root results in `Permission denied (os error 13)` and suppresses pressure event generation, preventing live promotion.
 
 ---
 
