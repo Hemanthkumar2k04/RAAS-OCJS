@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ThemeProvider from './components/ThemeProvider'
 import ThemeToggle from './components/ThemeToggle'
 import CodeEditor from './components/CodeEditor'
@@ -7,20 +7,15 @@ import StrategyBarChart from './components/StrategyBarChart'
 import TestCaseChart from './components/TestCaseChart'
 import { Panel, MetricStat } from './components/ui'
 import { tierTone, verdictTone } from './status'
+import { PROBLEMS, type CodeLanguage } from './problems'
 
 const BACKEND_URL = 'http://localhost:3000'
-
-const TEST_CASES = [
-  { input: '5 7\n', expected: '12\n' },
-  { input: '10 20\n', expected: '30\n' },
-]
 
 const STRATEGIES = ['Baseline', 'Predictive', 'Reactive', 'Hybrid', 'Run all four strategies'] as const
 type Strategy = (typeof STRATEGIES)[number]
 
 const RUN_ALL = ['baseline', 'predictive', 'reactive', 'hybrid'] as const
 
-type CodeLanguage = 'C' | 'C++' | 'Java' | 'Python'
 const LANGS: CodeLanguage[] = ['C', 'C++', 'Java', 'Python']
 
 function apiLanguage(lang: CodeLanguage): string {
@@ -49,47 +44,11 @@ function monacoLanguage(lang: CodeLanguage): string {
   }
 }
 
-const STARTER_CODE: Record<CodeLanguage, string> = {
-  Python: `a, b = map(int, input().split())
-print(a + b)
-`,
-  'C++': `#include <iostream>
-using namespace std;
-int main() {
-    int a, b;
-    if (cin >> a >> b) {
-        cout << a + b << endl;
-    }
-    return 0;
-}
-`,
-  Java: `import java.util.Scanner;
-public class Main {
-    public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        if (sc.hasNextInt()) {
-            int a = sc.nextInt();
-            int b = sc.nextInt();
-            System.out.println(a + b);
-        }
-    }
-}
-`,
-  C: `#include <stdio.h>
-int main() {
-    int a, b;
-    if (scanf("%d %d", &a, &b) == 2) {
-        printf("%d\\n", a + b);
-    }
-    return 0;
-}
-`,
-}
-
 interface CaseResult {
   verdict: string
   cpu_time_ms: number
   peak_memory_bytes: number
+  allocated_memory_bytes?: number
 }
 
 interface JudgeResult {
@@ -98,6 +57,7 @@ interface JudgeResult {
   verdict: string
   cpu_time_ms: number
   peak_memory_bytes: number
+  allocated_memory_bytes?: number
   wall_time_ms: number
   tier_started: string
   tier_promoted: boolean
@@ -105,14 +65,18 @@ interface JudgeResult {
   cases: CaseResult[]
 }
 
-type ComparisonMetric = 'cpu_time_ms' | 'wall_time_ms' | 'peak_memory_bytes'
+type ComparisonMetric = 'cpu_time_ms' | 'wall_time_ms' | 'memory'
 
-const METRICS: ComparisonMetric[] = ['cpu_time_ms', 'wall_time_ms', 'peak_memory_bytes']
+const METRICS: ComparisonMetric[] = [
+  'cpu_time_ms',
+  'wall_time_ms',
+  'memory',
+]
 
 const METRIC_LABELS: Record<ComparisonMetric, string> = {
   cpu_time_ms: 'CPU time',
   wall_time_ms: 'Wall time',
-  peak_memory_bytes: 'Peak memory',
+  memory: 'Memory',
 }
 
 function tierLabel(tier: string): string {
@@ -126,10 +90,27 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`
 }
 
-function formatMetric(metric: ComparisonMetric, result: JudgeResult): string {
-  if (metric === 'peak_memory_bytes') return formatBytes(result[metric])
-  return `${result[metric]} ms`
+function getAllocatedMemory(result: JudgeResult): number {
+  if (result.allocated_memory_bytes !== undefined && result.allocated_memory_bytes > 0) {
+    return result.allocated_memory_bytes
+  }
+  if (result.tier_started === 'low' && !result.tier_promoted) {
+    return 256 * 1024 * 1024
+  }
+  return 0
 }
+
+function formatAllocatedMemory(result: JudgeResult): string {
+  if (result.tier_promoted) {
+    return '256 MB → Uncapped (Promoted)'
+  }
+  const bytes = getAllocatedMemory(result)
+  if (bytes === 0 || result.tier_started === 'high') {
+    return 'Uncapped (Host)'
+  }
+  return formatBytes(bytes)
+}
+
 
 type BackendStatus = 'checking' | 'online' | 'offline'
 
@@ -170,9 +151,12 @@ export default function App() {
 }
 
 function JudgePage() {
+  const [selectedProblemId, setSelectedProblemId] = useState<string>(PROBLEMS[0].id)
   const [language, setLanguage] = useState<CodeLanguage>('Python')
   const [strategy, setStrategy] = useState<Strategy>('Predictive')
-  const [source, setSource] = useState(STARTER_CODE.Python)
+
+  const currentProblem = PROBLEMS.find((p) => p.id === selectedProblemId) ?? PROBLEMS[0]
+  const [source, setSource] = useState<string>(currentProblem.code.Python)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [singleResult, setSingleResult] = useState<JudgeResult | null>(null)
@@ -180,6 +164,7 @@ function JudgePage() {
   const [metric, setMetric] = useState<ComparisonMetric>('cpu_time_ms')
   const [status, setStatus] = useState<BackendStatus>('checking')
   const [runSeq, setRunSeq] = useState(0)
+  const subCounterRef = useRef(0)
 
   useEffect(() => {
     const check = async () => {
@@ -197,12 +182,32 @@ function JudgePage() {
     return () => clearInterval(id)
   }, [])
 
+  function handleSelectProblem(problemId: string) {
+    const next = PROBLEMS.find((p) => p.id === problemId) ?? PROBLEMS[0]
+    setSelectedProblemId(problemId)
+    setSource(next.code[language])
+    setSingleResult(null)
+    setAllResults(null)
+  }
+
+  function handleLanguageChange(nextLang: CodeLanguage) {
+    setLanguage(nextLang)
+    setSource(currentProblem.code[nextLang])
+    setSingleResult(null)
+    setAllResults(null)
+  }
+
+  function handleResetCode() {
+    setSource(currentProblem.code[language])
+  }
+
   async function submitOne(approach: string): Promise<JudgeResult> {
+    subCounterRef.current += 1
     const payload = {
-      id: `sub-${Date.now()}`,
+      id: `sub-${subCounterRef.current}`,
       language: apiLanguage(language),
       source,
-      test_cases: TEST_CASES,
+      test_cases: currentProblem.testCases,
       approach,
     }
     const res = await fetch(`${BACKEND_URL}/submit`, {
@@ -243,7 +248,26 @@ function JudgePage() {
   const hasResult = singleResult !== null || allResults !== null
   const runDisabled = running || status === 'offline'
   const chartData = allResults
-    ? allResults.map((r) => ({ strategy: r.approach, tier: r.tier_started, value: r[metric] }))
+    ? allResults.map((r) => {
+        const allocated = getAllocatedMemory(r)
+        const used = r.peak_memory_bytes
+        const isMem = metric === 'memory'
+        const val = isMem ? used : (r[metric as 'cpu_time_ms' | 'wall_time_ms'] as number)
+        const isUncapped = r.tier_started === 'high' || r.approach.toLowerCase() === 'baseline'
+        const allocatedMb = isUncapped
+          ? 0
+          : (allocated > 0 ? +(allocated / (1024 * 1024)).toFixed(1) : 256)
+        return {
+          strategy: r.approach,
+          tier: r.tier_started,
+          value: val,
+          allocated_mb: allocatedMb,
+          used_mb: +(used / (1024 * 1024)).toFixed(1),
+          allocated_str: formatAllocatedMemory(r),
+          used_str: formatBytes(used),
+          is_uncapped: isUncapped,
+        }
+      })
     : null
 
   return (
@@ -270,35 +294,103 @@ function JudgePage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
             {/* ------------------------------------------------ left column */}
             <section className="flex flex-col gap-6">
+              {/* Benchmark Switcher Panel */}
+              <Panel className="flex flex-col p-4">
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                      Benchmarks
+                    </span>
+                    <span className="rounded bg-ink/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                      {PROBLEMS.length} Available
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-ink-muted">Select problem</span>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-1.5">
+                  {PROBLEMS.map((prob) => {
+                    const isSelected = prob.id === currentProblem.id
+                    return (
+                      <button
+                        key={prob.id}
+                        type="button"
+                        onClick={() => handleSelectProblem(prob.id)}
+                        className={`flex items-center justify-between gap-3 rounded border px-3 py-2 text-left transition-all ${
+                          isSelected
+                            ? 'border-accent bg-accent/10 font-medium text-ink shadow-xs'
+                            : 'border-transparent bg-canvas text-ink-muted hover:border-line hover:bg-surface hover:text-ink'
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded font-mono text-xs font-medium ${
+                              isSelected ? 'bg-accent text-on-accent' : 'bg-line text-ink-muted'
+                            }`}
+                          >
+                            {prob.number}
+                          </span>
+                          <span className="truncate text-xs font-medium">
+                            {prob.title.replace(/^\d+\.\s*/, '')}
+                          </span>
+                        </div>
+                        <StatusChip mono={false} tone={prob.tagTone} className="shrink-0 px-2 py-0.5 text-[10px]">
+                          {prob.category}
+                        </StatusChip>
+                      </button>
+                    )
+                  })}
+                </div>
+              </Panel>
+
+              {/* Problem Details Panel */}
               <Panel className="p-5">
-                <div className="flex items-center justify-between gap-2">
-                  <StatusChip mono={false} tone="muted">
-                    Easy
-                  </StatusChip>
-                  <span className="text-xs text-ink-muted">Demo only</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <StatusChip mono={false} tone={currentProblem.tagTone}>
+                      {currentProblem.category}
+                    </StatusChip>
+                    <span className="rounded border border-line bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink-muted">
+                      {currentProblem.complexity}
+                    </span>
+                  </div>
+                  <span className="text-xs font-medium text-accent">
+                    {currentProblem.targetStrategy}
+                  </span>
                 </div>
                 <h2 className="mt-4 text-lg font-semibold leading-tight text-ink">
-                  1. Add Two Numbers
+                  {currentProblem.title}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-                  Read two integers separated by space from standard input and print their sum.
+                  {currentProblem.description}
                 </p>
               </Panel>
 
+              {/* Test Cases Panel */}
               <Panel className="flex flex-col gap-4 p-5">
-                <h3 className="text-xs font-medium text-ink-muted">Test cases</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-medium text-ink-muted">
+                    Test cases ({currentProblem.testCases.length})
+                  </h3>
+                  <span className="font-mono text-[11px] text-ink-muted">
+                    stdin / stdout
+                  </span>
+                </div>
                 <div className="flex flex-col gap-3">
-                  {TEST_CASES.map((tc, i) => (
+                  {currentProblem.testCases.map((tc, i) => (
                     <div key={i} className="grid grid-cols-2 gap-px border border-line bg-line">
                       <div className="min-w-0 bg-canvas p-3">
                         <div className="text-[11px] text-ink-muted">Input</div>
-                        <pre className="mt-1.5 whitespace-pre-wrap font-mono text-sm text-ink">
-                          {tc.input.trim() || '(empty)'}
+                        <pre className="mt-1.5 max-h-28 overflow-x-auto overflow-y-auto whitespace-pre-wrap font-mono text-sm text-ink">
+                          {tc.displayInput ??
+                            (tc.input.length > 250
+                              ? `${tc.input.slice(0, 200).trim()} ... [${tc.input.length.toLocaleString()} chars]`
+                              : tc.input.trim() || '(empty)')}
                         </pre>
                       </div>
                       <div className="min-w-0 bg-canvas p-3">
                         <div className="text-[11px] text-ink-muted">Expected</div>
-                        <pre className="mt-1.5 whitespace-pre-wrap font-mono text-sm text-ink">
+                        <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap font-mono text-sm text-ink">
                           {tc.expected.trim()}
                         </pre>
                       </div>
@@ -317,13 +409,7 @@ function JudgePage() {
                     <select
                       className="h-9 rounded border border-line bg-canvas px-3 text-sm text-ink outline-none transition-colors hover:border-ink-muted focus:border-accent"
                       value={language}
-                      onChange={(e) => {
-                        const lang = e.target.value as CodeLanguage
-                        setLanguage(lang)
-                        setSource(STARTER_CODE[lang])
-                        setSingleResult(null)
-                        setAllResults(null)
-                      }}
+                      onChange={(e) => handleLanguageChange(e.target.value as CodeLanguage)}
                     >
                       {LANGS.map((l) => (
                         <option key={l} value={l}>
@@ -352,7 +438,15 @@ function JudgePage() {
                     </select>
                   </label>
 
-                  <div className="ml-auto">
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResetCode}
+                      title="Reset code to problem template"
+                      className="inline-flex h-9 items-center justify-center rounded border border-line bg-canvas px-3 text-xs font-medium text-ink-muted transition-colors hover:border-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      Reset Code
+                    </button>
                     <button
                       type="button"
                       onClick={handleRun}
@@ -408,10 +502,11 @@ function JudgePage() {
                       </div>
 
                       {/* Hero numbers */}
-                      <div className="mt-5 grid grid-cols-1 gap-px border border-line bg-line sm:grid-cols-3">
+                      <div className="mt-5 grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-4">
                         <MetricStat label="CPU time" value={`${singleResult.cpu_time_ms} ms`} />
                         <MetricStat label="Wall time" value={`${singleResult.wall_time_ms} ms`} />
-                        <MetricStat label="Peak memory" value={formatBytes(singleResult.peak_memory_bytes)} />
+                        <MetricStat label="Memory used" value={formatBytes(singleResult.peak_memory_bytes)} />
+                        <MetricStat label="Memory allocated" value={formatAllocatedMemory(singleResult)} />
                       </div>
 
                       {/* Per test case chart */}
@@ -443,7 +538,9 @@ function JudgePage() {
                               metric={metric}
                               metricLabel={METRIC_LABELS[metric]}
                               formatValue={(v) =>
-                                metric === 'peak_memory_bytes' ? formatBytes(v) : `${v} ms`
+                                metric === 'memory'
+                                  ? formatBytes(v)
+                                  : `${v} ms`
                               }
                             />
                           </div>
@@ -457,6 +554,18 @@ function JudgePage() {
                           <StatusChip tone={tierTone(singleResult.tier_started)} mono={false}>
                             {tierLabel(singleResult.tier_started)}
                           </StatusChip>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 py-2.5">
+                          <span className="text-sm text-ink-muted">Memory allocated</span>
+                          <span className="font-mono text-sm text-ink">
+                            {formatAllocatedMemory(singleResult)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 py-2.5">
+                          <span className="text-sm text-ink-muted">Memory used (peak)</span>
+                          <span className="font-mono text-sm text-ink">
+                            {formatBytes(singleResult.peak_memory_bytes)}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between gap-4 py-2.5">
                           <span className="text-sm text-ink-muted">Tier promoted</span>
@@ -475,19 +584,57 @@ function JudgePage() {
                       <h4 className="mt-5 text-xs font-medium text-ink-muted">
                         Cases ({singleResult.cases.length})
                       </h4>
-                      <div className="flex flex-col divide-y divide-line border-t border-line">
-                        {singleResult.cases.map((c, i) => (
-                          <div
-                            key={i}
-                            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 py-2.5"
-                          >
-                            <span className="text-sm text-ink-muted">Case {i + 1}</span>
-                            <StatusChip tone={verdictTone(c.verdict)}>{c.verdict}</StatusChip>
-                            <span className="font-mono text-sm text-ink tabular-nums">
-                              {c.cpu_time_ms} ms
-                            </span>
-                          </div>
-                        ))}
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-line text-left">
+                              <th className="py-2 pr-3 text-xs font-medium text-ink-muted">Case</th>
+                              <th className="py-2 pr-3 text-xs font-medium text-ink-muted">Verdict</th>
+                              {metric === 'memory' ? (
+                                <>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    Memory Allocated
+                                  </th>
+                                  <th className="py-2 text-right text-xs font-medium text-ink-muted">
+                                    Memory Used
+                                  </th>
+                                </>
+                              ) : (
+                                <th className="py-2 text-right text-xs font-medium text-ink-muted">
+                                  CPU Time
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {singleResult.cases.map((c, i) => (
+                              <tr key={i} className="border-b border-line last:border-0">
+                                <td className="py-2.5 pr-3 text-sm text-ink-muted">Case {i + 1}</td>
+                                <td className="py-2.5 pr-3">
+                                  <StatusChip tone={verdictTone(c.verdict)}>{c.verdict}</StatusChip>
+                                </td>
+                                {metric === 'memory' ? (
+                                  <>
+                                    <td className="py-2.5 pr-3 text-right font-mono text-xs text-ink tabular-nums">
+                                      {c.allocated_memory_bytes && c.allocated_memory_bytes > 0
+                                        ? formatBytes(c.allocated_memory_bytes)
+                                        : singleResult.tier_started === 'high'
+                                        ? 'Uncapped'
+                                        : '256 MB'}
+                                    </td>
+                                    <td className="py-2.5 text-right font-mono text-xs font-semibold text-ink tabular-nums">
+                                      {formatBytes(c.peak_memory_bytes)}
+                                    </td>
+                                  </>
+                                ) : (
+                                  <td className="py-2.5 text-right font-mono text-xs text-ink tabular-nums">
+                                    {c.cpu_time_ms} ms
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </Panel>
                   )}
@@ -499,9 +646,10 @@ function JudgePage() {
                           <StrategyBarChart
                             key={runSeq}
                             data={chartData}
+                            metric={metric}
                             metricLabel={METRIC_LABELS[metric]}
                             formatValue={(v) =>
-                              metric === 'peak_memory_bytes' ? formatBytes(v) : `${v} ms`
+                              metric === 'memory' ? formatBytes(v) : `${v} ms`
                             }
                             tierLabelFn={tierLabel}
                           />
@@ -529,42 +677,97 @@ function JudgePage() {
                       </div>
 
                       <div className="mt-4 overflow-x-auto">
-                        <table className="w-full min-w-[560px] text-sm">
+                        <table className="w-full min-w-[620px] text-sm">
                           <thead>
                             <tr className="border-b border-line text-left">
-                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                              <th className="py-2 pr-3 text-xs font-medium text-ink-muted">
                                 Strategy
                               </th>
-                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                              <th className="py-2 pr-3 text-xs font-medium text-ink-muted">
                                 Verdict
                               </th>
-                              <th className="py-2 pr-4 text-xs font-medium text-ink-muted">
+                              <th className="py-2 pr-3 text-xs font-medium text-ink-muted">
                                 Tier
                               </th>
-                              <th className="py-2 text-right text-xs font-medium text-ink-muted">
-                                {METRIC_LABELS[metric]}
-                              </th>
+                              {metric === 'memory' ? (
+                                <>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    Memory Allocated
+                                  </th>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    Memory Used
+                                  </th>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    Utilization
+                                  </th>
+                                  <th className="py-2 text-right text-xs font-medium text-ink-muted">
+                                    Promotion
+                                  </th>
+                                </>
+                              ) : (
+                                <>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    CPU Time
+                                  </th>
+                                  <th className="py-2 pr-3 text-right text-xs font-medium text-ink-muted">
+                                    Wall Time
+                                  </th>
+                                  <th className="py-2 text-right text-xs font-medium text-ink-muted">
+                                    Promotion
+                                  </th>
+                                </>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
-                            {allResults.map((r) => (
-                              <tr key={r.approach} className="border-b border-line last:border-0">
-                                <td className="py-2.5 pr-4 font-medium capitalize text-ink">
-                                  {r.approach}
-                                </td>
-                                <td className="py-2.5 pr-4">
-                                  <StatusChip tone={verdictTone(r.verdict)}>{r.verdict}</StatusChip>
-                                </td>
-                                <td className="py-2.5 pr-4">
-                                  <StatusChip tone={tierTone(r.tier_started)} mono={false}>
-                                    {tierLabel(r.tier_started)}
-                                  </StatusChip>
-                                </td>
-                                <td className="py-2.5 text-right font-mono text-ink tabular-nums">
-                                  {formatMetric(metric, r)}
-                                </td>
-                              </tr>
-                            ))}
+                            {allResults.map((r) => {
+                              const allocated = getAllocatedMemory(r)
+                              const used = r.peak_memory_bytes
+                              const utilPct = allocated > 0 ? `${((used / allocated) * 100).toFixed(1)}%` : '—'
+                              return (
+                                <tr key={r.approach} className="border-b border-line last:border-0">
+                                  <td className="py-2.5 pr-3 font-medium capitalize text-ink">
+                                    {r.approach}
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <StatusChip tone={verdictTone(r.verdict)}>{r.verdict}</StatusChip>
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <StatusChip tone={tierTone(r.tier_started)} mono={false}>
+                                      {tierLabel(r.tier_started)}
+                                    </StatusChip>
+                                  </td>
+                                  {metric === 'memory' ? (
+                                    <>
+                                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-ink tabular-nums">
+                                        {formatAllocatedMemory(r)}
+                                      </td>
+                                      <td className="py-2.5 pr-3 text-right font-mono text-xs font-semibold text-ink tabular-nums">
+                                        {formatBytes(used)}
+                                      </td>
+                                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-ink-muted tabular-nums">
+                                        {utilPct}
+                                      </td>
+                                      <td className="py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">
+                                        {r.tier_promoted ? `Promoted (${r.promotion_time_ms} ms)` : 'None'}
+                                      </td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-ink tabular-nums">
+                                        {r.cpu_time_ms} ms
+                                      </td>
+                                      <td className="py-2.5 pr-3 text-right font-mono text-xs text-ink tabular-nums">
+                                        {r.wall_time_ms} ms
+                                      </td>
+                                      <td className="py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">
+                                        {r.tier_promoted ? `Promoted (${r.promotion_time_ms} ms)` : 'None'}
+                                      </td>
+                                    </>
+                                  )}
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>

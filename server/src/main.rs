@@ -35,6 +35,7 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
                 verdict: "SE".to_string(),
                 cpu_time_ms: 0,
                 peak_memory_bytes: 0,
+                allocated_memory_bytes: 0,
                 wall_time_ms: 0,
                 tier_started,
                 tier_promoted: false,
@@ -51,6 +52,11 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
         .map(|c| c.peak_memory_bytes)
         .max()
         .unwrap_or(0);
+    let allocated_mem = if outcome.tier_promoted || tier == policy::Tier::High {
+        0
+    } else {
+        docker::LOW_MEM_HARD_LIMIT
+    };
     let verdict = outcome
         .results
         .iter()
@@ -63,6 +69,7 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
         verdict: verdict.to_string(),
         cpu_time_ms: cpu_ms,
         peak_memory_bytes: mem,
+        allocated_memory_bytes: allocated_mem,
         wall_time_ms: wall_ms,
         tier_started,
         tier_promoted: outcome.tier_promoted,
@@ -73,6 +80,12 @@ async fn judge(submission: Submission, policy: &(dyn TierPolicy + Send + Sync)) 
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    // Ensure native Docker engine is used so host cgroups are directly accessible
+    if std::path::Path::new("/var/run/docker.sock").exists() {
+        unsafe {
+            std::env::set_var("DOCKER_CONTEXT", "default");
+        }
+    }
     let info = tokio::process::Command::new("docker")
         .arg("info")
         .output()

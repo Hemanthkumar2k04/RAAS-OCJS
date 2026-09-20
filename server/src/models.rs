@@ -16,6 +16,7 @@ pub struct JudgeResult {
     pub verdict: String,
     pub cpu_time_ms: u64,
     pub peak_memory_bytes: u64,
+    pub allocated_memory_bytes: u64,
     pub wall_time_ms: u64,
     pub tier_started: String,
     pub tier_promoted: bool,
@@ -34,6 +35,7 @@ pub struct CaseResult {
     pub verdict: String,
     pub cpu_time_ms: u64,
     pub peak_memory_bytes: u64,
+    pub allocated_memory_bytes: u64,
 }
 
 #[derive(Serialize)]

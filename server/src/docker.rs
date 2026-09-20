@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::process::Command;
 
+/// Hard memory limit (bytes) for a Low-tier container.
+pub const LOW_MEM_HARD_LIMIT: u64 = 256 * 1024 * 1024; // 256 MiB
+
 /// Soft memory watermark (bytes) written to `memory.high` for a Low-tier start.
 ///
 /// Docker's `--memory=256m` sets `memory.max` (the hard OOM boundary) but does
@@ -102,11 +105,13 @@ async fn run_case_monitored(
     cg: Option<&CGroup>,
     watch: bool,
     policy: &(dyn TierPolicy + Send + Sync),
+    tier: &Tier,
     started: Instant,
     promoted: &mut bool,
     promotion_time_ms: &mut u64,
 ) -> io::Result<CaseResult> {
     let case_start = Instant::now();
+    let cpu_start_usec = cg.and_then(|c| c.cpu_usage_usec().ok());
 
     // Owned copies so the exec task can be spawned with 'static data.
     let mut args = vec!["exec".to_string(), "-i".to_string(), container.to_string()];
@@ -125,21 +130,26 @@ async fn run_case_monitored(
         tokio::select! {
             _ = poll.tick() => {
                 if let Some(cg) = cg {
-                    // Reactive trigger: did the kernel cross the soft watermark?
+                    // Reactive trigger: did the kernel cross the soft watermark or memory exceed 128MB?
                     if watch && !*promoted {
-                        if let Ok(events) = cg.memory_events() {
-                            let high = events.get("high").copied().unwrap_or(0);
-                            let crossed = last_high.map_or(false, |prev| high > prev);
-                            last_high = Some(high);
-                            if crossed {
-                                let mem_current = cg.memory_current().unwrap_or(0);
-                                let signal =
-                                    MonitorSignal::new(mem_current, LOW_MEM_HIGH_WATERMARK, true);
-                                if policy.should_promote(&signal) {
-                                    let _ = cg.promote_to_unlimited();
-                                    *promoted = true;
-                                    *promotion_time_ms = started.elapsed().as_millis() as u64;
-                                }
+                        let cur = cg.memory_current().unwrap_or(0);
+                        let events = cg.memory_events().ok();
+                        let high = events.as_ref().and_then(|e| e.get("high").copied()).unwrap_or(0);
+                        let high_crossed = last_high.map_or(false, |prev| high > prev);
+                        last_high = Some(high);
+
+                        let crossed = high_crossed || cur >= LOW_MEM_HIGH_WATERMARK;
+                        if crossed {
+                            let signal =
+                                MonitorSignal::new(cur, LOW_MEM_HIGH_WATERMARK, true);
+                            if policy.should_promote(&signal) {
+                                let _ = cg.promote_to_unlimited();
+                                let _ = Command::new("docker")
+                                    .args(["update", container, "--memory", "0", "--memory-swap", "-1", "--cpus", "0"])
+                                    .output()
+                                    .await;
+                                *promoted = true;
+                                *promotion_time_ms = started.elapsed().as_millis() as u64;
                             }
                         }
                     }
@@ -147,6 +157,34 @@ async fn run_case_monitored(
                     if let Ok(cur) = cg.memory_current() {
                         if cur > case_peak {
                             case_peak = cur;
+                        }
+                    }
+                } else if watch && !*promoted {
+                    // Fallback when host cgroup directory is not directly reachable (e.g. Docker Desktop VM)
+                    if let Ok(out) = Command::new("docker")
+                        .args(["exec", container, "cat", "/sys/fs/cgroup/memory.current"])
+                        .output()
+                        .await
+                    {
+                        if out.status.success() {
+                            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                            if let Ok(cur) = s.parse::<u64>() {
+                                if cur > case_peak {
+                                    case_peak = cur;
+                                }
+                                if cur >= LOW_MEM_HIGH_WATERMARK {
+                                    let signal =
+                                        MonitorSignal::new(cur, LOW_MEM_HIGH_WATERMARK, true);
+                                    if policy.should_promote(&signal) {
+                                        let _ = Command::new("docker")
+                                            .args(["update", container, "--memory", "0", "--memory-swap", "-1", "--cpus", "0"])
+                                            .output()
+                                            .await;
+                                        *promoted = true;
+                                        *promotion_time_ms = started.elapsed().as_millis() as u64;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -188,6 +226,17 @@ async fn run_case_monitored(
     }
 
     let wall_ms = case_start.elapsed().as_millis() as u64;
+    let cpu_ms = match (cpu_start_usec, cg.and_then(|c| c.cpu_usage_usec().ok())) {
+        (Some(before), Some(after)) => {
+            let delta = after.saturating_sub(before);
+            if delta == 0 {
+                0
+            } else {
+                std::cmp::max(1, ((delta as f64) / 1000.0).round() as u64)
+            }
+        }
+        _ => wall_ms,
+    };
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let expected = test.expected.trim().to_string();
     let verdict = if !output.status.success() {
@@ -197,10 +246,16 @@ async fn run_case_monitored(
     } else {
         "WA"
     };
+    let allocated = if *promoted || *tier == Tier::High {
+        0
+    } else {
+        LOW_MEM_HARD_LIMIT
+    };
     Ok(CaseResult {
         verdict: verdict.to_string(),
-        cpu_time_ms: wall_ms,
+        cpu_time_ms: cpu_ms,
         peak_memory_bytes: case_peak,
+        allocated_memory_bytes: allocated,
     })
 }
 
@@ -254,9 +309,8 @@ async fn submission_inner(
         }
     };
 
-    // Only arm/watch promotion when a Low start + a reactive-style policy + a
-    // reachable cgroup all hold; otherwise the exec runs exactly as before.
-    let watch = can_promote && *tier == Tier::Low && cg.is_some();
+    // Watch promotion whenever a Low start + a reactive-style policy hold.
+    let watch = can_promote && *tier == Tier::Low;
 
     let mut results = Vec::new();
     let mut promoted = false;
@@ -270,6 +324,7 @@ async fn submission_inner(
             cg.as_ref(),
             watch,
             policy,
+            tier,
             started,
             &mut promoted,
             &mut promotion_time_ms,
@@ -316,6 +371,7 @@ async fn start_and_compile(
         "python" => vec!["python3".to_string(), "/app/main.py".to_string()],
         "java" => vec![
             "java".to_string(),
+            "-Xmx512m".to_string(),
             "-cp".to_string(),
             "/app".to_string(),
             "Main".to_string(),

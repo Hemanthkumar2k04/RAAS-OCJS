@@ -1,75 +1,57 @@
-# React + TypeScript + Vite
+# RAAS-OCJS Frontend Visualizer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An interactive real-time benchmarking dashboard for evaluating Resource-Aware Adaptive Scheduling strategies on an Online Competitive Judge System.
 
-Currently, two official plugins are available:
+Built with **React 18**, **TypeScript**, **Vite**, **Tailwind CSS**, and **Recharts**.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Problem Switcher**: Switch between five authentic, high-stakes competition problems (Prefix Sums, 0-1 Knapsack 2D DP, Floyd-Warshall All-Pairs Shortest Path, Game Tree Search, Top-K Streaming Frequencies).
+- **Multi-Language Support**: View and run solutions in **C++**, **Python**, **Java**, and **C**.
+- **Strategy Comparison**: Select an individual strategy (**Baseline**, **Predictive**, **Reactive**, **Hybrid**) or execute **"Run all four strategies"** with a single click.
+- **Unified Memory Analysis**: Side-by-side grouped bar charts and comparison tables rendering **Memory Used** (actual physical RSS) vs. **Memory Allocated** (tier ceiling), highlighting infrastructure savings and live tier promotion transitions.
+- **Responsive Test Case Previews**: Automatic formatting and bounded scroll previews for high-scale benchmark inputs ($N=30,000$ to $50,000$ and 150 MiB state spaces).
+- **Health Indicator**: Real-time poll checking backend status on `http://localhost:3000/health`.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Development & Build
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Prerequisites
+- Node.js 18+ and `npm`
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Start Development Server
+```bash
+npm install
+npm run dev
+```
+Access the application at `http://localhost:5173`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Production Build
+```bash
+npm run build
+```
+Builds optimized production assets into `dist/`.
+
+---
+
+## Directory Structure
 
 ```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+frontend/src/
+├── App.tsx                     # Main dashboard page and submission workflow
+├── chartTokens.ts              # Semantic theme tokens for Recharts visualizers
+├── problems.ts                 # Real-world competition problems, code, & generators
+├── status.ts                   # Verdict & tier badge tone definitions
+├── theme.tsx                   # Dark / Light theme provider context
+├── components/
+│   ├── CodeEditor.tsx          # Read/write code editor component
+│   ├── StatusChip.tsx          # Verdict (AC, WA, RE, TLE) and Tier badges
+│   ├── StrategyBarChart.tsx    # Comparative grouped bar chart (CPU, Wall, Memory)
+│   ├── TestCaseChart.tsx       # Per-case performance visualizer
+│   ├── ThemeProvider.tsx       # Root theme wrapper
+│   ├── ThemeToggle.tsx         # Dark/Light mode toggle button
+│   └── ui/                     # Reusable card, panel, and stat metric primitives
 ```

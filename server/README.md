@@ -150,26 +150,35 @@ curl -X POST localhost:3000/submit -H 'content-type: application/json' -d '{
   "approach": "Predictive",
   "verdict": "AC",
   "cpu_time_ms": 92,
-  "peak_memory_bytes": 0,
-  "wall_time_ms": 2671,
-  "tier_started": "high",
+  "peak_memory_bytes": 11425792,
+  "allocated_memory_bytes": 268435456,
+  "wall_time_ms": 623,
+  "tier_started": "low",
   "tier_promoted": false,
   "promotion_time_ms": 0,
-  "cases": [{ "verdict": "AC", "cpu_time_ms": 92, "peak_memory_bytes": 0 }]
+  "cases": [
+    {
+      "verdict": "AC",
+      "cpu_time_ms": 92,
+      "peak_memory_bytes": 11425792,
+      "allocated_memory_bytes": 268435456
+    }
+  ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
 | `verdict` | `AC` (ok), `WA` (wrong answer), `TLE`, `MLE`, `RE`, `CE`, `SE` (server exec error) |
-| `tier_started` | `low` / `high` — the tier the submission began in |
+| `tier_started` | `low` (Light) / `high` (Heavy) — the tier the submission began in |
 | `tier_promoted` | `true` if the reactive path lifted the container's limits mid-run |
 | `promotion_time_ms` | wall-clock ms from submission start until the promotion write |
-| `peak_memory_bytes` | max `memory.current` sampled during execution (per-case + overall) |
-| `cpu_time_ms` | sum of per-case CPU time |
+| `peak_memory_bytes` | max physical RSS `memory.current` sampled during execution |
+| `allocated_memory_bytes` | configured cgroup memory limit (256 MiB for Light tier, 0 for Uncapped) |
+| `cpu_time_ms` | sum of per-case CPU time measured via cgroup v2 CFS `cpu.stat` delta |
+| `wall_time_ms` | total elapsed wall-clock time from request receipt to completion |
 
-> `peak_memory_bytes` / `tier_promoted` / `promotion_time_ms` are real values from
-> the host-side cgroup monitor (see [Reactive monitoring](#6-reactive-monitoring)).
+> `peak_memory_bytes` / `allocated_memory_bytes` / `cpu_time_ms` are measured directly from the host cgroup controllers (`cpu.stat`, `memory.current`, `memory.events`), providing microsecond precision free of Docker process startup jitter.
 
 ---
 

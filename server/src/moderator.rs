@@ -76,6 +76,22 @@ impl CGroup {
         self.read_size("memory.current")
     }
 
+    /// Read total CPU usage in microseconds from `cpu.stat`.
+    pub fn cpu_usage_usec(&self) -> io::Result<u64> {
+        let content = self.read("cpu.stat")?;
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("usage_usec ") {
+                if let Ok(u) = rest.trim().parse::<u64>() {
+                    return Ok(u);
+                }
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "usage_usec not found in cpu.stat",
+        ))
+    }
+
     /// Highest memory usage since the cgroup was created, in bytes.
     /// NOTE: cgroup v2 allows resetting this by writing to the file, but that
     /// proved non-functional in our environment, so per-case peak is obtained
@@ -240,6 +256,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create scratch cgroup dir");
         dir
+    }
+
+    #[test]
+    fn parses_cpu_usage() {
+        let dir = scratch("cpu_stat");
+        std::fs::write(
+            dir.join("cpu.stat"),
+            "usage_usec 29086\nuser_usec 14543\nsystem_usec 14543\n",
+        )
+        .unwrap();
+        let cg = CGroup::new(&dir);
+        assert_eq!(cg.cpu_usage_usec().unwrap(), 29086);
     }
 
     #[test]

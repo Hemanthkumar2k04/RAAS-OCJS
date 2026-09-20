@@ -38,3 +38,10 @@ export const TONE_CLASSES: Record<Tone, string> = {
   heavy: 'border-heavy/30 bg-heavy/10 text-heavy',
   muted: 'border-line bg-ink/5 text-ink-muted',
 }
+
+export function formatBytes(bytes: number): string {
+  if (!bytes) return '0 B'
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`
+  return `${bytes} B`
+}
