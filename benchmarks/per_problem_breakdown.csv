@@ -1,21 +1,21 @@
-Problem,Description,Strategy,Submissions,Avg_Allocated_MB,Avg_Used_MB,Avg_Wasted_MB,Wasted_Percentage,Promotions,Promotion_Pct
-P1_prefix_sums,Prefix Sums (Light),Baseline,3518,2048.0,9.7,2038.3,99.53,0,0.0
-P1_prefix_sums,Prefix Sums (Light),Predictive,3518,270.3,9.7,260.6,96.41,0,0.0
-P1_prefix_sums,Prefix Sums (Light),Reactive,3518,256.0,9.7,246.3,96.21,0,0.0
-P1_prefix_sums,Prefix Sums (Light),Hybrid,3518,256.0,9.7,246.3,96.21,0,0.0
-P5_top_k_streaming,Top-K Streaming (Light STL),Baseline,2503,2048.0,11.9,2036.1,99.42,0,0.0
-P5_top_k_streaming,Top-K Streaming (Light STL),Predictive,2503,276.8,11.9,264.9,95.72,0,0.0
-P5_top_k_streaming,Top-K Streaming (Light STL),Reactive,2503,256.0,11.9,244.1,95.37,0,0.0
-P5_top_k_streaming,Top-K Streaming (Light STL),Hybrid,2503,256.0,11.8,244.2,95.37,0,0.0
-P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Baseline,1489,2048.0,10.1,2037.9,99.51,0,0.0
-P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Predictive,1489,275.3,10.1,265.1,96.33,0,0.0
-P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Reactive,1489,256.0,10.1,245.9,96.06,0,0.0
-P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Hybrid,1489,256.0,10.1,245.9,96.06,0,0.0
-P4_game_tree_search,Game Tree Search (Branching O(2^N)),Baseline,1044,2048.0,9.5,2038.5,99.54,0,0.0
-P4_game_tree_search,Game Tree Search (Branching O(2^N)),Predictive,1044,281.7,9.5,272.3,96.63,0,0.0
-P4_game_tree_search,Game Tree Search (Branching O(2^N)),Reactive,1044,256.0,9.5,246.5,96.29,0,0.0
-P4_game_tree_search,Game Tree Search (Branching O(2^N)),Hybrid,1044,256.0,9.5,246.5,96.29,0,0.0
-P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Baseline,1446,2048.0,216.4,1831.6,89.43,0,0.0
-P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Predictive,1446,2031.9,216.4,1815.5,89.35,0,0.0
-P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Reactive,1446,2048.0,216.6,1831.4,89.42,1446,100.0
-P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Hybrid,1446,2048.0,216.5,1831.5,89.43,0,0.0
+Problem,Description,Strategy,Submissions,Total_Allocated_GB,Total_Used_GB,Total_Wasted_GB,Avg_Allocated_MB,Avg_Used_MB,Avg_Wasted_MB,Wasted_Percentage,Avg_CPU_Time_ms,Avg_Execution_Wall_ms,Promotions,Promotion_Pct
+P1_prefix_sums,Prefix Sums (Light),Baseline,3518,7036.0,33.34,7002.66,2048.0,9.7,2038.3,99.53,56.5,539.7,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Predictive,3518,928.5,33.33,895.17,270.3,9.7,260.6,96.41,56.5,539.7,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Reactive,3518,879.5,33.33,846.17,256.0,9.7,246.3,96.21,56.5,539.7,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Hybrid,3518,879.5,33.37,846.13,256.0,9.7,246.3,96.21,56.5,540.1,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Baseline,2503,5006.0,28.98,4977.02,2048.0,11.9,2036.1,99.42,88.2,612.5,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Predictive,2503,676.5,28.99,647.51,276.8,11.9,264.9,95.72,88.3,612.5,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Reactive,2503,625.75,28.98,596.77,256.0,11.9,244.1,95.37,88.2,612.5,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Hybrid,2503,625.75,28.96,596.79,256.0,11.8,244.2,95.37,88.2,612.1,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Baseline,1489,2978.0,14.68,2963.32,2048.0,10.1,2037.9,99.51,149.2,675.7,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Predictive,1489,400.25,14.7,385.55,275.3,10.1,265.1,96.33,149.4,676.4,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Reactive,1489,372.25,14.68,357.57,256.0,10.1,245.9,96.06,149.1,675.9,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Hybrid,1489,372.25,14.67,357.58,256.0,10.1,245.9,96.06,149.1,675.5,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Baseline,1044,2088.0,9.68,2078.32,2048.0,9.5,2038.5,99.54,147.6,627.1,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Predictive,1044,287.25,9.67,277.58,281.7,9.5,272.3,96.63,147.5,627.0,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Reactive,1044,261.0,9.68,251.32,256.0,9.5,246.5,96.29,147.5,627.2,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Hybrid,1044,261.0,9.68,251.32,256.0,9.5,246.5,96.29,147.5,626.9,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Baseline,1446,2892.0,305.62,2586.38,2048.0,216.4,1831.6,89.43,215.8,698.5,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Predictive,1446,2869.25,305.64,2563.61,2031.9,216.4,1815.5,89.35,215.7,698.4,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Reactive,1446,2892.0,305.85,2586.15,2048.0,216.6,1831.4,89.42,215.9,714.0,1446,100.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Hybrid,1446,2892.0,305.66,2586.34,2048.0,216.5,1831.5,89.43,215.7,698.6,0,0.0

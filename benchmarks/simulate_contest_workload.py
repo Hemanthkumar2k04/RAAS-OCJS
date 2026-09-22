@@ -211,9 +211,13 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
     tier_started = "low"
     tier_promoted = False
     prom_time_ms = 0.0
+    allocated_cpu_cores = 1.0
+    cpu_shares = 1024
 
     if strategy == "baseline":
         allocated_mb = BASELINE_STATIC_ALLOC_MB
+        allocated_cpu_cores = 2.0
+        cpu_shares = 2048
         tier_started = "high"
         tier_promoted = False
         execution_wall_ms = base_wall_ms
@@ -225,9 +229,13 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
             is_heavy = not is_heavy
         if is_heavy:
             allocated_mb = PROMOTED_TIER_ALLOC_MB
+            allocated_cpu_cores = 2.0
+            cpu_shares = 2048
             tier_started = "high"
         else:
             allocated_mb = LIGHT_TIER_ALLOC_MB
+            allocated_cpu_cores = 1.0
+            cpu_shares = 1024
             tier_started = "low"
         execution_wall_ms = base_wall_ms
     elif strategy == "reactive":
@@ -238,10 +246,14 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
             tier_promoted = True
             prom_time_ms = prof.get("prom_ms", 500)
             allocated_mb = PROMOTED_TIER_ALLOC_MB
+            allocated_cpu_cores = 2.0
+            cpu_shares = 2048
             # 15ms live promotion overhead
             execution_wall_ms = base_wall_ms + 15.0
         else:
             allocated_mb = LIGHT_TIER_ALLOC_MB
+            allocated_cpu_cores = 1.0
+            cpu_shares = 1024
             tier_promoted = False
             execution_wall_ms = base_wall_ms
     elif strategy == "hybrid":
@@ -249,6 +261,8 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
         is_heavy = prof.get("p_heavy", False)
         if is_heavy:
             allocated_mb = PROMOTED_TIER_ALLOC_MB
+            allocated_cpu_cores = 2.0
+            cpu_shares = 2048
             tier_started = "high"
             execution_wall_ms = base_wall_ms
         else:
@@ -259,9 +273,13 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
                 tier_promoted = True
                 prom_time_ms = prof.get("prom_ms", 500)
                 allocated_mb = PROMOTED_TIER_ALLOC_MB
+                allocated_cpu_cores = 2.0
+                cpu_shares = 2048
                 execution_wall_ms = base_wall_ms + 15.0
             else:
                 allocated_mb = LIGHT_TIER_ALLOC_MB
+                allocated_cpu_cores = 1.0
+                cpu_shares = 1024
                 tier_promoted = False
                 execution_wall_ms = base_wall_ms
 
@@ -278,11 +296,14 @@ def dispatch_job(sub, start_time, wait_time_ms, strategy, profiles, events, comp
         "arrival_time_s": round(sub["arrival_time"], 2),
         "wait_time_ms": round(wait_time_ms, 2),
         "execution_ms": round(execution_wall_ms, 2),
+        "cpu_time_ms": round(cpu_ms, 2),
         "turnaround_ms": round(wait_time_ms + execution_wall_ms, 2),
         "allocated_mb": round(allocated_mb, 2),
         "used_mb": round(actual_used_mb, 2),
         "wasted_mb": round(wasted_mb, 2),
         "wasted_pct": round(wasted_pct, 2),
+        "allocated_cpu_cores": allocated_cpu_cores,
+        "cpu_shares": cpu_shares,
         "tier_started": tier_started,
         "tier_promoted": tier_promoted,
         "promotion_time_ms": round(prom_time_ms, 1)
@@ -385,10 +406,15 @@ def main():
                 "Description": desc,
                 "Strategy": strat.capitalize(),
                 "Submissions": len(records),
+                "Total_Allocated_GB": round(alloc / 1024.0, 2),
+                "Total_Used_GB": round(used / 1024.0, 2),
+                "Total_Wasted_GB": round(wasted / 1024.0, 2),
                 "Avg_Allocated_MB": round(float(mean([r["allocated_mb"] for r in records])), 1),
                 "Avg_Used_MB": round(float(mean([r["used_mb"] for r in records])), 1),
                 "Avg_Wasted_MB": round(float(mean([r["wasted_mb"] for r in records])), 1),
                 "Wasted_Percentage": round((wasted / alloc) * 100.0, 2),
+                "Avg_CPU_Time_ms": round(float(mean([r["cpu_time_ms"] for r in records])), 1),
+                "Avg_Execution_Wall_ms": round(float(mean([r["execution_ms"] for r in records])), 1),
                 "Promotions": prom,
                 "Promotion_Pct": round((prom / len(records)) * 100.0, 1)
             })
@@ -400,25 +426,56 @@ def main():
         writer.writerows(prob_summary)
     print(f"[OUTPUT] Per-problem breakdown saved to: {prob_csv}")
 
-    # Write per-language breakdown
+    # Write per-language breakdown with comprehensive metrics
     lang_summary = []
     for lang, weight in LANGUAGE_DISTRIBUTION:
+        base_records = [r for r in all_completed["baseline"] if r["language"] == lang]
+        base_alloc_gb = sum(r["allocated_mb"] for r in base_records) / 1024.0
+
         for strat in strategies:
             records = [r for r in all_completed[strat] if r["language"] == lang]
             if not records:
                 continue
-            alloc = sum(r["allocated_mb"] for r in records)
-            used = sum(r["used_mb"] for r in records)
-            wasted = sum(r["wasted_mb"] for r in records)
+            total_alloc_mb = sum(r["allocated_mb"] for r in records)
+            total_used_mb = sum(r["used_mb"] for r in records)
+            total_wasted_mb = sum(r["wasted_mb"] for r in records)
+            alloc_gb = total_alloc_mb / 1024.0
+            used_gb = total_used_mb / 1024.0
+            wasted_gb = total_wasted_mb / 1024.0
+            wasted_pct = (total_wasted_mb / total_alloc_mb) * 100.0
+
+            mem_saved_gb = base_alloc_gb - alloc_gb if strat != "baseline" else 0.0
+            mem_saved_pct = ((base_alloc_gb - alloc_gb) / base_alloc_gb) * 100.0 if strat != "baseline" else 0.0
+
+            exec_times = [r["execution_ms"] for r in records]
+            cpu_times = [r["cpu_time_ms"] for r in records]
+            turnarounds = [r["turnaround_ms"] for r in records]
+            wait_times = [r["wait_time_ms"] for r in records]
+            prom_count = sum(1 for r in records if r["tier_promoted"])
+
+            avg_cpu_cores = mean([r["allocated_cpu_cores"] for r in records])
+            total_core_hours = sum(r["allocated_cpu_cores"] * (r["execution_ms"] / 1000.0) / 3600.0 for r in records)
+
             lang_summary.append({
                 "Language": lang.upper(),
                 "Strategy": strat.capitalize(),
                 "Submissions": len(records),
-                "Avg_Allocated_MB": round(float(mean([r["allocated_mb"] for r in records])), 1),
-                "Avg_Used_MB": round(float(mean([r["used_mb"] for r in records])), 1),
-                "Avg_Wasted_MB": round(float(mean([r["wasted_mb"] for r in records])), 1),
-                "Wasted_Percentage": round((wasted / alloc) * 100.0, 2),
-                "Avg_Execution_ms": round(float(mean([r["execution_ms"] for r in records])), 1)
+                "Language_Share_Pct": round((len(records) / TOTAL_SUBMISSIONS) * 100.0, 1),
+                "Total_Allocated_GB": round(alloc_gb, 2),
+                "Total_Used_GB": round(used_gb, 2),
+                "Total_Wasted_GB": round(wasted_gb, 2),
+                "Wasted_Percentage": round(wasted_pct, 2),
+                "Memory_Saved_vs_Baseline_GB": round(mem_saved_gb, 2),
+                "Memory_Savings_Pct": round(mem_saved_pct, 2),
+                "Avg_Allocated_Cores": round(float(avg_cpu_cores), 2),
+                "Total_Core_Hours_Allocated": round(float(total_core_hours), 3),
+                "Avg_CPU_Time_ms": round(float(mean(cpu_times)), 1),
+                "Avg_Execution_Wall_ms": round(float(mean(exec_times)), 1),
+                "Avg_Queue_Wait_ms": round(float(mean(wait_times)), 2),
+                "Avg_Turnaround_ms": round(float(mean(turnarounds)), 1),
+                "P95_Turnaround_ms": round(float(percentile(turnarounds, 95)), 1),
+                "Watermark_Promotions": prom_count,
+                "Promotion_Rate_Pct": round((prom_count / len(records)) * 100.0, 1)
             })
 
     lang_csv = "benchmarks/per_language_breakdown.csv"
