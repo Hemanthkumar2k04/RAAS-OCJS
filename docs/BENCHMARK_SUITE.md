@@ -6,6 +6,28 @@ Each problem is explicitly engineered to exercise a specific subsystem of the ad
 
 ---
 
+```mermaid
+flowchart TD
+    S["Five benchmark problems"]:::start
+
+    S --> P1["P1 Prefix Sums<br/>tiny memory"]:::benchmark
+    S --> P2["P2 Knapsack DP<br/>~150 MiB"]:::benchmark
+    S --> P3["P3 Floyd-Warshall<br/>triple nested loops"]:::benchmark
+    S --> P4["P4 Game Tree<br/>binary recursion"]:::benchmark
+    S --> P5["P5 Top-K Stream<br/>hash map + heap, large N"]:::benchmark
+
+    P1 --> A["Proves Light tier<br/>is assigned and fits"]:::result
+    P2 --> B["Proves reactive monitor<br/>detects and promotes live"]:::result
+    P3 --> C["Proves AST detects<br/>max_loop_depth = 3"]:::result
+    P4 --> D["Proves AST detects<br/>recursive_call_count = 2"]:::result
+    P5 --> E["Proves AST detects<br/>heavy data structures"]:::result
+    P5 --> F["Proves CPU timing<br/>is stable at large N"]:::result
+
+    classDef benchmark fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
+    classDef result fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#052e16
+    classDef start fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#422006
+```
+
 ## Problem 1: Range Prefix Sums & Cumulative Balance
 
 - **Contest Reference**: CSES Range Queries / Codeforces Div 2A
