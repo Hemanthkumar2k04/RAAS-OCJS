@@ -49,43 +49,29 @@ RAAS-OCJS provides four switchable scheduling engines:
 ---
 
 ## 03. System Architecture
+```mermaid
+flowchart TD
+    A["Incoming Submission"]
+    B["Tree-sitter AST Parser<br/>(C++, Python, Java, C)"]
+    C["Feature Extraction<br/>(22 Base AST + 10 Engineered Ratios)"]
+    D["Rust-Compiled XGBoost Inference<br/>(Zero Python Runtime Dependency)"]
 
-```
-[ Incoming Submission ]
-        |
-        v
-[ Tree-sitter AST Parser ] (C++, Python, Java, C)
-        |
-        v
-[ Feature Extraction ] (22 Base AST + 10 Engineered Ratios)
-        |
-        v
-[ Rust-Compiled XGBoost Inference ] (Zero Python runtime dependency)
-        |
-        +-----------------------------------+-----------------------------------+
-        |                                                                       |
-        v                                                                       v
-[ Light Tier (256 MiB / 1 CPU) ]                             [ Heavy Tier (Uncapped) ]
-  - memory.max  = 256 MiB                                      - memory = Unlimited
-  - memory.high = 128 MiB (Soft Watermark)                     - cpus   = Unlimited
-        |                                                                       |
-        v                                                                       |
-[ cgroup v2 Reactive Monitor (2ms tick) ]                                       |
-        |                                                                       |
- [ cur >= 128 MB? ]                                                             |
-   /             \                                                              |
- YES              NO                                                            |
-  |                |                                                            |
-  v                |                                                            |
-[ Live Promotion ] |                                                            |
- `docker update`   |                                                            |
-  -> Uncapped      |                                                            |
-        |          |                                                            |
-        +----------+------------------------------------------------------------+
-                   |
-                   v
-   [ Microsecond CFS cpu.stat Accounting ]
-   [ Interactive Comparison UI ]
+    A --> B --> C --> D
+
+    D --> E["Light Tier<br/>256 MiB / 1 CPU<br/><br/>memory.max = 256 MiB<br/>memory.high = 128 MiB (Soft Watermark)"]
+    D --> F["Heavy Tier<br/>Uncapped<br/><br/>memory = Unlimited<br/>cpus = Unlimited"]
+
+    E --> G["cgroup v2 Reactive Monitor<br/>(2ms tick)"]
+    G --> H{"cur >= 128 MB?"}
+
+    H -->|YES| I["Live Promotion<br/><br/>docker update<br/>→ Uncapped"]
+    H -->|NO| J["Continue in Light Tier"]
+
+    I --> K["Microsecond CFS cpu.stat Accounting"]
+    J --> K
+    F --> K
+
+    K --> L["Interactive Comparison UI"]
 ```
 
 ---
