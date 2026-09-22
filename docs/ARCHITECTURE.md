@@ -12,63 +12,49 @@ Traditional Online Judges (e.g., DOMjudge, DMOJ, VJudge) enforce uniform, static
 1. **Predictive Phase**: Static source code parsing via Tree-sitter and 32-feature AST extraction fed into a Rust-embedded XGBoost classifier to select an initial isolation tier prior to container instantiation.
 2. **Reactive Phase**: Continuous event-driven Linux cgroup v2 monitoring via kernel `memory.events` (specifically the `high` pressure event) and `memory.current` watermarks, dynamically migrating and scaling container resource ceilings live on-the-fly without aborting execution.
 
+
+```mermaid
+flowchart TD
+    A["Incoming Submission<br/>(Source, Language, Test Cases)"]:::input
+
+    B["Tree-sitter Multi-AST<br/>(Python/C++/Java/C)"]:::parser
+
+    C["Rust Feature Extractor (22+10)<br/>(AST Topology, Loops, Collections)"]:::processing
+
+    D["Compiled XGBoost Model (m2cgen)<br/>(Zero Python runtime dependency)"]:::model
+
+    A --> B --> C --> D
+
+    D --> E["Predicted Light (Low Tier)<br/>- 1 CPU Core<br/>- 256 MiB Hard Limit (memory.max)<br/>- 128 MiB Soft Watermark (memory.high)"]:::light
+
+    D --> F["Predicted Heavy (High Tier)<br/>- Uncapped Host CPU<br/>- Uncapped Memory"]:::heavy
+
+    E --> G["Async Execution & cgroup v2 Event Monitor<br/>(2 ms Poll on memory.events & cpu.stat)"]:::monitor
+
+    G --> H{"Watermark Breached? (cur >= 128 MB)"}:::decision
+
+    H -->|YES| I["Live Container Promotion<br/>docker update --memory 0<br/>Lift to Uncapped Tier"]:::promotion
+
+    H -->|NO| J["Continue Execution<br/>in Light Tier"]:::light
+
+    I --> K["CFS cpu.stat Delta<br/>(Grading & Metrics)"]:::metrics
+    J --> K
+    F --> K
+
+    classDef input fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
+    classDef parser fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#2e1065
+    classDef processing fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#451a03
+    classDef model fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#500724
+
+    classDef light fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#052e16
+    classDef heavy fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#450a0a
+
+    classDef monitor fill:#cffafe,stroke:#0891b2,stroke-width:2px,color:#083344
+    classDef decision fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#422006
+    classDef promotion fill:#ffedd5,stroke:#ea580c,stroke-width:3px,color:#431407
+    classDef metrics fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#1e1b4b
 ```
-                                  +---------------------------------------+
-                                  |           Incoming Submission         |
-                                  |   (Source, Language, Test Cases)      |
-                                  +-------------------+-------------------+
-                                                      |
-                                                      v
-                                  +---------------------------------------+
-                                  |        Tree-sitter Multi-AST          |
-                                  |           (Python/C++/Java/C)         |
-                                  +-------------------+-------------------+
-                                                      |
-                                                      v
-                                  +---------------------------------------+
-                                  |      Rust Feature Extractor (22+10)   |
-                                  |   (AST Topology, Loops, Collections)  |
-                                  +-------------------+-------------------+
-                                                      |
-                                                      v
-                                  +---------------------------------------+
-                                  |     Compiled XGBoost Model (m2cgen)   |
-                                  |    Zero Python runtime dependency     |
-                                  +-------------------+-------------------+
-                                                      |
-                       +------------------------------+------------------------------+
-                       |                                                             |
-                       v                                                             v
-        [Predicted Light (Low Tier)]                                  [Predicted Heavy (High Tier)]
-     - 1 CPU Core                                                  - Uncapped Host CPU
-     - 256 MiB Hard Limit (`memory.max`)                           - Uncapped Memory
-     - 128 MiB Soft Watermark (`memory.high`)                                        |
-                       |                                                             |
-                       v                                                             |
-+-----------------------------------------------+                                    |
-|   Async Execution & cgroup v2 Event Monitor   |                                    |
-|   - 2 ms Poll on `memory.events` & `cpu.stat` |                                    |
-+----------------------+------------------------+                                    |
-                       |                                                             |
-        [Watermark Breached? (cur >= 128 MB)]                                        |
-         /                                 \                                         |
-       YES                                 NO                                        |
-        |                                   |                                        |
-        v                                   |                                        |
-+-------------------------------+           |                                        |
-|   Live Container Promotion    |           |                                        |
-| `docker update --memory 0`    |           |                                        |
-| Lift to Uncapped Tier         |           |                                        |
-+---------------+---------------+           |                                        |
-                |                           |                                        |
-                +---------------------------+----------------------------------------+
-                                            |
-                                            v
-                                +-----------------------+
-                                |  CFS cpu.stat Delta   |
-                                |  Grading & Metrics    |
-                                +-----------------------+
-```
+                                 
 
 ---
 
