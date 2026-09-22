@@ -1,0 +1,21 @@
+Problem,Description,Strategy,Submissions,Avg_Allocated_MB,Avg_Used_MB,Avg_Wasted_MB,Wasted_Percentage,Promotions,Promotion_Pct
+P1_prefix_sums,Prefix Sums (Light),Baseline,3518,2048.0,9.7,2038.3,99.53,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Predictive,3518,270.3,9.7,260.6,96.41,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Reactive,3518,256.0,9.7,246.3,96.21,0,0.0
+P1_prefix_sums,Prefix Sums (Light),Hybrid,3518,256.0,9.7,246.3,96.21,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Baseline,2503,2048.0,11.9,2036.1,99.42,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Predictive,2503,276.8,11.9,264.9,95.72,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Reactive,2503,256.0,11.9,244.1,95.37,0,0.0
+P5_top_k_streaming,Top-K Streaming (Light STL),Hybrid,2503,256.0,11.8,244.2,95.37,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Baseline,1489,2048.0,10.1,2037.9,99.51,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Predictive,1489,275.3,10.1,265.1,96.33,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Reactive,1489,256.0,10.1,245.9,96.06,0,0.0
+P3_floyd_warshall,Floyd-Warshall (CPU O(V^3)),Hybrid,1489,256.0,10.1,245.9,96.06,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Baseline,1044,2048.0,9.5,2038.5,99.54,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Predictive,1044,281.7,9.5,272.3,96.63,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Reactive,1044,256.0,9.5,246.5,96.29,0,0.0
+P4_game_tree_search,Game Tree Search (Branching O(2^N)),Hybrid,1044,256.0,9.5,246.5,96.29,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Baseline,1446,2048.0,216.4,1831.6,89.43,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Predictive,1446,2031.9,216.4,1815.5,89.35,0,0.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Reactive,1446,2048.0,216.6,1831.4,89.42,1446,100.0
+P2_knapsack_2d_dp,0-1 Knapsack 2D DP (Memory-Heavy),Hybrid,1446,2048.0,216.5,1831.5,89.43,0,0.0

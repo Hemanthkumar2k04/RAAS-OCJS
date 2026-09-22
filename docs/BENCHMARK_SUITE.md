@@ -11,7 +11,7 @@ flowchart TD
     S["Five benchmark problems"]:::start
 
     S --> P1["P1 Prefix Sums<br/>tiny memory"]:::benchmark
-    S --> P2["P2 Knapsack DP<br/>~150 MiB"]:::benchmark
+    S --> P2["P2 Knapsack DP<br/>~200 MiB"]:::benchmark
     S --> P3["P3 Floyd-Warshall<br/>triple nested loops"]:::benchmark
     S --> P4["P4 Game Tree<br/>binary recursion"]:::benchmark
     S --> P5["P5 Top-K Stream<br/>hash map + heap, large N"]:::benchmark
@@ -50,15 +50,15 @@ Given an array of $N$ integers and $Q$ range queries $[L, R]$, compute the cumul
 - **Contest Reference**: AtCoder Educational DP Contest / LeetCode Hard
 - **Algorithmic Category**: `Dynamic Programming`
 - **Time Complexity**: $O(N \times W)$
-- **Space Complexity**: $O(N \times W)$ ($\approx 150\text{ MiB}$ physical RSS)
+- **Space Complexity**: $O(N \times W)$ ($\approx 200\text{ MiB}$ physical RSS)
 - **Target Scheduling Evaluation**: **Reactive / Hybrid Live Migration**.
 
 ### Problem Statement
-Given $N$ items and a total knapsack capacity $W$, compute the optimal subset value using a large 2D state space table `DP[N][W]`. The state space table is dimensioned to allocate and touch ~150 MiB of RAM, deliberately crossing the 128 MiB cgroup watermark (`LOW_MEM_HIGH_WATERMARK`).
+Given $N$ items and a total knapsack capacity $W$, compute the optimal subset value using a large 2D state space table `DP[N][W]`. The state space table is dimensioned to allocate and touch ~200 MiB of RAM, deliberately crossing the ~179.2 MiB cgroup watermark (70% of 256 MiB, `LOW_MEM_HIGH_WATERMARK`).
 
 ### Behavior Under Test
-1. The container launches in the Light tier with a 256 MiB hard limit and 128 MiB soft watermark.
-2. During the DP execution, memory commitment exceeds 128 MiB.
+1. The container launches in the Light tier with a 256 MiB hard limit and 179.2 MiB (70%) soft watermark.
+2. During the DP execution, memory commitment exceeds 179.2 MiB.
 3. The reactive monitor detects the event and issues `docker update --memory 0 --cpus 0`.
 4. The container is promoted live to Uncapped at **~538 ms** without process interruption.
 

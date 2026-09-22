@@ -43,7 +43,7 @@ cargo build
 
 > [!IMPORTANT]
 > **Why `sudo` is mandatory for Reactive & Hybrid Promotion:**
-> During execution of Reactive or Hybrid submissions, the judge dynamically writes the 128 MiB watermark to the container's kernel cgroup file:
+> During execution of Reactive or Hybrid submissions, the judge dynamically writes the ~179.2 MiB (70%) watermark to the container's kernel cgroup file:
 > `/sys/fs/cgroup/system.slice/docker-<id>.scope/memory.high`
 > 
 > Under standard Linux systemd cgroup hierarchies, unprivileged processes cannot write to `/sys/fs/cgroup`.

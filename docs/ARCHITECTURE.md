@@ -25,13 +25,13 @@ flowchart TD
 
     A --> B --> C --> D
 
-    D --> E["Predicted Light (Low Tier)<br/>- 1 CPU Core<br/>- 256 MiB Hard Limit (memory.max)<br/>- 128 MiB Soft Watermark (memory.high)"]:::light
+    D --> E["Predicted Light (Low Tier)<br/>- 1 CPU Core<br/>- 256 MiB Hard Limit (memory.max)<br/>- 179.2 MiB Soft Watermark (70% memory.high)"]:::light
 
     D --> F["Predicted Heavy (High Tier)<br/>- Uncapped Host CPU<br/>- Uncapped Memory"]:::heavy
 
     E --> G["Async Execution & cgroup v2 Event Monitor<br/>(2 ms Poll on memory.events & cpu.stat)"]:::monitor
 
-    G --> H{"Watermark Breached? (cur >= 128 MB)"}:::decision
+    G --> H{"Watermark Breached? (cur >= 179.2 MB / 70%)"}:::decision
 
     H -->|YES| I["Live Container Promotion<br/>docker update --memory 0<br/>Lift to Uncapped Tier"]:::promotion
 
@@ -84,7 +84,7 @@ Submissions run inside dedicated rootless/daemon sandboxes utilizing Linux cgrou
 - **Directory Resolution**: Locates `/sys/fs/cgroup/system.slice/docker-<CONTAINER_ID>.scope/` directly on the Linux host filesystem.
 - **Dual Memory Boundaries**:
   - `memory.max`: Hard OOM limit (256 MiB for Light tier).
-  - `memory.high`: Soft watermark set to 128 MiB (`LOW_MEM_HIGH_WATERMARK`). When breached, the kernel throttles memory allocations and increments `memory.events (high)`, allowing the monitor to safely promote the container *before* an OOM killer terminates it.
+  - `memory.high`: Soft watermark set to ~179.2 MiB (`LOW_MEM_HIGH_WATERMARK`, 70% of `memory.max`). When breached, the kernel throttles memory allocations and increments `memory.events (high)`, allowing the monitor to safely promote the container *before* an OOM killer terminates it.
 - **Microsecond Kernel CPU Accounting**:
   - Direct reading of `usage_usec` from `cpu.stat` before and after each test case execution:
     $$\Delta \text{CPU} = \frac{\text{usage\_usec}_{\text{after}} - \text{usage\_usec}_{\text{before}}}{1000} \text{ ms}$$
@@ -93,7 +93,7 @@ Submissions run inside dedicated rootless/daemon sandboxes utilizing Linux cgrou
 ### 2.4 Reactive Monitor & Live Tier Migration (`server/src/moderator.rs`)
 - Polling loop runs on a 2 ms tick (`MONITOR_POLL`).
 - Reads monotonic `memory.events` delta and `memory.current`.
-- On watermark breach (`cur >= 128MB` or `high_crossed`), the moderator executes:
+- On watermark breach (`cur >= 179.2MB` / 70% or `high_crossed`), the moderator executes:
   ```rust
   cg.promote_to_unlimited()?;
   Command::new("docker")

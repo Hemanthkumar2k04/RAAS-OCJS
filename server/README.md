@@ -75,7 +75,7 @@ cargo build                # bakes the new weights into the binary
 
 > [!IMPORTANT]
 > **Why `sudo` is strictly required for Reactive and Hybrid tier promotion:**
-> The Reactive monitor detects memory spikes by arming a 128 MiB soft watermark (`memory.high`) directly on the container's host cgroup:
+> The Reactive monitor detects memory spikes by arming a ~179.2 MiB (70%) soft watermark (`memory.high`) directly on the container's host cgroup:
 > `/sys/fs/cgroup/system.slice/docker-<id>.scope/memory.high`
 > 
 > On Linux, writing to cgroup controller files owned by systemd requires root privileges.
@@ -213,7 +213,7 @@ used). The mechanism, per submission:
 ```
 docker run --cpus=1 --memory=256m --network=none <runtime-image>   # Low tier start
 locate cgroup dir ONCE  /proc/<pid>/cgroup -> /sys/fs/cgroup/system.slice/docker-<id>.scope
-write memory.high 134217728      # arm the 128 MiB soft watermark (Docker does NOT set it)
+write memory.high 187904819      # arm the ~179.2 MiB (70%) soft watermark (Docker does NOT set it)
 for each test case (docker exec):
   poll memory.events + memory.current every ~2 ms
   if the 'high' counter grew since the last poll  -> policy.should_promote()?
@@ -236,7 +236,7 @@ docker rm -f
 
 ### Tuning knobs & honest caveats
 
-- `LOW_MEM_HIGH_WATERMARK` (currently 128 MiB) in `src/docker.rs` — the soft line
+- `LOW_MEM_HIGH_WATERMARK` (currently ~179.2 MiB / 70% of `memory.max`) in `src/docker.rs` — the soft line
   below Docker's 256 MiB `memory.max`. Lower → reacts earlier; must stay under the
   hard limit so pressure events fire before any OOM-kill.
 - `MONITOR_POLL` (currently 2 ms) in `src/docker.rs`. `memory.events` counters are

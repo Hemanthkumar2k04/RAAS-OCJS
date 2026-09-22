@@ -60,18 +60,18 @@ RAAS-OCJS evaluates four distinct scheduling paradigms against a common containe
 - **Mechanism**: Ignores static code properties and assumes every submission is Light (`Tier::Low`) by default. Relies on the Linux kernel's cgroup v2 event mechanism to detect actual memory consumption.
 - **Watermark Architecture**:
   - Hard limit (`memory.max`): 256 MiB
-  - Soft watermark (`memory.high`): 128 MiB
+  - Soft watermark (`memory.high`): 179.2 MiB (70% of `memory.max`)
 - **Monitoring Loop**:
   - Spawns an asynchronous monitoring task polling every 2 ms.
-  - Checks if `memory.current >= 128 MiB` or if the kernel has incremented the monotonic `high` counter in `memory.events`.
+  - Checks if `memory.current >= 179.2 MiB` (70%) or if the kernel has incremented the monotonic `high` counter in `memory.events`.
   - When the threshold is crossed, the moderator calls `docker update --memory 0 --cpus 0`.
 - **Container Lifecycle**:
   ```
-  Spawn Light Container (256M) -> Set memory.high=128M -> Start Exec Task || Start Monitor Task ->
-     [If cur >= 128M] -> Live promote to Uncapped -> Continue Executing -> Complete
+  Spawn Light Container (256M) -> Set memory.high=179.2M (70%) -> Start Exec Task || Start Monitor Task ->
+     [If cur >= 179.2M] -> Live promote to Uncapped -> Continue Executing -> Complete
   ```
 - **Observed Behavior**:
-  - In Problem 2 (0-1 Knapsack 2D DP), the container starts with 256 MB. As the 150 MB table is allocated and touched, the monitor catches the breach at **~538 ms** and smoothly lifts limits without interruption or memory faults.
+  - In Problem 2 (0-1 Knapsack 2D DP), the container starts with 256 MB. As the ~200 MB table is allocated and touched, the monitor catches the breach at the 179.2 MiB threshold and smoothly lifts limits without interruption or memory faults.
 
 ---
 
@@ -80,7 +80,7 @@ RAAS-OCJS evaluates four distinct scheduling paradigms against a common containe
   1. Evaluates XGBoost prediction before execution.
   2. If predicted **Heavy**, starts directly in `Tier::High` (avoiding soft watermark checks).
   3. If predicted **Light**, starts in `Tier::Low` **with** the reactive monitor armed.
-  4. If the model underestimated the submission's memory usage (false negative), the reactive monitor catches the spike at 128 MiB and promotes the container live.
+  4. If the model underestimated the submission's memory usage (false negative), the reactive monitor catches the spike at 179.2 MiB (70%) and promotes the container live.
 - **Advantage**: Eliminates both the cost of over-allocating Light submissions and the risk of OOM kills on misclassified Heavy submissions.
 
 ---

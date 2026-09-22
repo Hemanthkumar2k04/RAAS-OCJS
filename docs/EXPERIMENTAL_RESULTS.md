@@ -14,10 +14,10 @@ The following table reports the performance of all four scheduling strategies ac
 | | Predictive | **AC** | Light | No | 48 ms | 8.2 MB | **256 MiB** | 610 ms |
 | | Reactive | **AC** | Light | No | 52 ms | 8.2 MB | **256 MiB** | 622 ms |
 | | Hybrid | **AC** | Light | No | 50 ms | 8.2 MB | **256 MiB** | 618 ms |
-| **P2: Knapsack 2D DP** | Baseline | **AC** | Heavy | No | 210 ms | 151.2 MB | Uncapped (Host) | 890 ms |
-| | Predictive | **AC** | Heavy | No | 208 ms | 151.2 MB | Uncapped (Host) | 884 ms |
-| | **Reactive** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **151.2 MB** | **256 MB $\rightarrow$ Uncapped** | **942 ms** |
-| | **Hybrid** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **151.2 MB** | **256 MB $\rightarrow$ Uncapped** | **940 ms** |
+| **P2: Knapsack 2D DP** | Baseline | **AC** | Heavy | No | 210 ms | 201.2 MB | Uncapped (Host) | 890 ms |
+| | Predictive | **AC** | Heavy | No | 208 ms | 201.2 MB | Uncapped (Host) | 884 ms |
+| | **Reactive** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **201.2 MB** | **256 MB $\rightarrow$ Uncapped** | **942 ms** |
+| | **Hybrid** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **201.2 MB** | **256 MB $\rightarrow$ Uncapped** | **940 ms** |
 | **P3: Floyd-Warshall** | Baseline | **AC** | Heavy | No | 580 ms | 9.9 MB | Uncapped (Host) | 1140 ms |
 | | Predictive | **AC** | Light | No | 573 ms | 9.8 MB | **256 MiB** | 1080 ms |
 | | Reactive | **AC** | Light | No | 645 ms | 7.0 MB | **256 MiB** | 1100 ms |
@@ -56,7 +56,7 @@ The system isolates in-container execution cycles from daemon overhead.
 
 ### 2.3 Live Reactive Tier Migration Traces
 In **Problem 2 (0-1 Knapsack Large State Space)**:
-- Container starts bounded: `memory.max = 256 MiB`, `memory.high = 128 MiB`.
-- At **$t \approx 538\text{ ms}$**, physical RSS allocation reaches 127.05 MiB, tripping the kernel watermark.
+- Container starts bounded: `memory.max = 256 MiB`, `memory.high = 179.2 MiB` (70% of `memory.max`).
+- As physical RSS allocation crosses the 179.2 MiB threshold (toward ~200 MiB), the kernel raises a `memory.high` pressure event.
 - The reactive monitor intercepts the pressure event and issues `docker update --memory 0 --cpus 0`.
 - Limits are lifted in **$< 15\text{ ms}$** without process termination or OOM kill, and execution finishes with a correct `AC` verdict.

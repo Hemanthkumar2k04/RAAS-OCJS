@@ -43,7 +43,7 @@ RAAS-OCJS provides four switchable scheduling engines:
 |---|---|---|---|
 | **Baseline** | Intake | Current standard practice | Always assigns Heavy tier (Uncapped Host Memory & CPU) |
 | **Predictive** | Pre-Execution | Tree-sitter AST $\rightarrow$ 32 features $\rightarrow$ Compiled XGBoost | Assigns Light (256 MiB, 1 CPU) or Heavy tier before launching container |
-| **Reactive** | Mid-Execution | Linux cgroup v2 event-driven monitoring | Starts in Light tier (256 MiB); dynamically promotes to Uncapped if 128 MiB watermark is crossed |
+| **Reactive** | Mid-Execution | Linux cgroup v2 event-driven monitoring | Starts in Light tier (256 MiB); dynamically promotes to Uncapped if 70% (~179.2 MiB) watermark is crossed |
 | **Hybrid** | Both | Predictive start + Reactive live safety net | Starts in ML-predicted tier; actively promotes if memory spikes exceed prediction |
 
 ---
@@ -58,11 +58,11 @@ flowchart TD
 
     A --> B --> C --> D
 
-    D --> E["Light Tier<br/>256 MiB / 1 CPU<br/><br/>memory.max = 256 MiB<br/>memory.high = 128 MiB (Soft Watermark)"]
+    D --> E["Light Tier<br/>256 MiB / 1 CPU<br/><br/>memory.max = 256 MiB<br/>memory.high = 179.2 MiB (70% Soft Watermark)"]
     D --> F["Heavy Tier<br/>Uncapped<br/><br/>memory = Unlimited<br/>cpus = Unlimited"]
 
     E --> G["cgroup v2 Reactive Monitor<br/>(2ms tick)"]
-    G --> H{"cur >= 128 MB?"}
+    G --> H{"cur >= 179.2 MB (70%)?"}
 
     H -->|YES| I["Live Promotion<br/><br/>docker update<br/>→ Uncapped"]
     H -->|NO| J["Continue in Light Tier"]
@@ -83,7 +83,7 @@ The system includes five high-stakes competition problems modeled after **Codefo
 1. **Range Prefix Sums & Cumulative Balance** (`Prefix Sums`, Light)
    - $O(N + Q)$ Time · $O(N)$ Space. Evaluates Light-tier performance with zero cgroup watermark events.
 2. **0-1 Knapsack Large State Space (2D Grid DP)** (`Dynamic Programming`, Memory-Heavy)
-   - $O(N \times W)$ Time · $O(N \times W)$ Space (~150 MiB RSS). Intentionally breaches the 128 MiB watermark to verify **live reactive container promotion**.
+   - $O(N \times W)$ Time · $O(N \times W)$ Space (~200 MiB RSS). Intentionally breaches the 70% (~179.2 MiB) watermark to verify **live reactive container promotion**.
 3. **All-Pairs Shortest Path (Floyd-Warshall Algorithm)** (`Graph`, CPU-Bound)
    - $O(V^3)$ Time · $O(V^2)$ Space ($V=100, 120$). Evaluates Predictive AST detection of triply nested loops (`max_loop_depth = 3`).
 4. **Game Tree Search (Binary Branching Recursion)** (`Game Theory`, Recursive)
@@ -99,7 +99,7 @@ The system includes five high-stakes competition problems modeled after **Codefo
    - Rather than measuring host wall-time around `docker exec` (which adds 150–200 ms of container startup noise), the judge reads `/sys/fs/cgroup/.../cpu.stat` deltas directly from the Linux kernel scheduler.
    - Reduces execution measurement variance from $\pm 200\%$ down to $\le \pm 4\%$.
 2. **Soft Watermark Live Migration (`memory.high`)**:
-   - Uses `memory.high = 128 MiB` to detect pressure *before* reaching the 256 MiB hard limit (`memory.max`), preventing kernel OOM-killer panics.
+   - Uses `memory.high = 179.2 MiB` (70% of `memory.max`) to detect pressure *before* reaching the 256 MiB hard limit (`memory.max`), preventing kernel OOM-killer panics while avoiding premature tier migration.
    - Executes live container expansion (`docker update --memory 0 --cpus 0`) in $< 15\text{ ms}$ without dropping running processes.
 3. **Unified Allocated vs. Used Memory Tracking**:
    - Explicitly records both the **Peak Memory Used** (actual RSS footprint) and **Memory Allocated** (assigned tier ceiling), enabling direct quantification of infrastructure savings.
@@ -114,8 +114,8 @@ The system includes five high-stakes competition problems modeled after **Codefo
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **P1: Prefix Sums** | Baseline | **AC** | Heavy | No | 77 ms | 14.1 MB | Uncapped (Host) |
 | | **Predictive / Reactive** | **AC** | Light | No | **48–52 ms** | **8.2 MB** | **256 MiB** |
-| **P2: Knapsack 2D DP** | Baseline | **AC** | Heavy | No | 210 ms | 151.2 MB | Uncapped (Host) |
-| | **Reactive / Hybrid** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **151.2 MB** | **256 MB $\rightarrow$ Uncapped** |
+| **P2: Knapsack 2D DP** | Baseline | **AC** | Heavy | No | 210 ms | 201.2 MB | Uncapped (Host) |
+| | **Reactive / Hybrid** | **AC** | Light | **Yes (538 ms)** | **215 ms** | **201.2 MB** | **256 MB $\rightarrow$ Uncapped** |
 | **P3: Floyd-Warshall** | Baseline | **AC** | Heavy | No | 580 ms | 9.9 MB | Uncapped (Host) |
 | | **Predictive** | **AC** | Light | No | **573 ms** | **9.8 MB** | **256 MiB** |
 | **P5: Top-K Streaming** | Baseline | **AC** | Heavy | No | 163 ms | 21.1 MB | Uncapped (Host) |

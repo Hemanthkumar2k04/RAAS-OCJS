@@ -9,14 +9,20 @@ use tokio::process::Command;
 /// Hard memory limit (bytes) for a Low-tier container.
 pub const LOW_MEM_HARD_LIMIT: u64 = 256 * 1024 * 1024; // 256 MiB
 
+/// Soft watermark as a percentage of the hard limit (tunable).
+pub const HIGH_WATERMARK_PCT: u64 = 70;
+
 /// Soft memory watermark (bytes) written to `memory.high` for a Low-tier start.
+/// Derived as 70% of `LOW_MEM_HARD_LIMIT` (~179.2 MiB).
 ///
 /// Docker's `--memory=256m` sets `memory.max` (the hard OOM boundary) but does
 /// *not* set `memory.high`. The kernel only counts `high` pressure events when
 /// `memory.high` is configured, so the judge writes this watermark itself. It
-/// sits well below the hard limit, giving the reactive monitor a chance to
-/// promote a heavy submission *before* it can be OOM-killed.
-const LOW_MEM_HIGH_WATERMARK: u64 = 128 * 1024 * 1024; // 128 MiB (tunable)
+/// sits below the hard limit, giving the reactive monitor a chance to
+/// promote a heavy submission *before* it can be OOM-killed while allowing
+/// submissions that fit within ~70% of the tier to complete without promotion.
+pub const LOW_MEM_HIGH_WATERMARK: u64 =
+    LOW_MEM_HARD_LIMIT * HIGH_WATERMARK_PCT / 100; // ~179.2 MiB (187,904,819 bytes)
 
 /// How often the monitor re-reads the cgroup files while a test case runs.
 /// Reading a cgroup file is sub-millisecond; `memory.events` counters are
@@ -130,7 +136,7 @@ async fn run_case_monitored(
         tokio::select! {
             _ = poll.tick() => {
                 if let Some(cg) = cg {
-                    // Reactive trigger: did the kernel cross the soft watermark or memory exceed 128MB?
+                    // Reactive trigger: did the kernel cross the soft watermark or memory exceed ~179.2 MiB (70%)?
                     if watch && !*promoted {
                         let cur = cg.memory_current().unwrap_or(0);
                         let events = cg.memory_events().ok();
@@ -394,9 +400,13 @@ async fn start_and_compile(
         "-c".to_string(),
         "sleep infinity".to_string(),
     ]);
-    let start = Command::new("docker").args(start_args).output().await;
-    if !start?.status.success() {
-        return Err(std::io::Error::other("Error in starting containers"));
+    let start = Command::new("docker").args(start_args).output().await?;
+    if !start.status.success() {
+        let err = String::from_utf8_lossy(&start.stderr);
+        eprintln!("[docker run error for {cname}]: {err}");
+        return Err(std::io::Error::other(format!(
+            "Error in starting container {cname}: {err}"
+        )));
     }
     let source_file = source_filename(language);
     let cp = Command::new("docker")
